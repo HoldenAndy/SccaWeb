@@ -176,12 +176,13 @@ const chartConfigs = [
 ];
 
 export function HistorialPage() {
-  const [fromDate, setFromDate] = useState("2026-03-25");
+  const [fromDate, setFromDate] = useState("2026-04-01");
   const [toDate, setToDate] = useState("2026-04-01");
   const [activeParams, setActiveParams] = useState(["ph", "temperatura", "turbidez", "tds"]);
   const [page, setPage] = useState(1);
-  const [filterMode, setFilterMode] = useState("7días");
+  const [filterMode, setFilterMode] = useState("Hoy");
   const [customDatesEnabled, setCustomDatesEnabled] = useState(false);
+  const [filteredTableData, setFilteredTableData] = useState(tableData);
   const totalPages = 12;
   const itemsPerPage = 8;
 
@@ -196,7 +197,24 @@ export function HistorialPage() {
     setCustomDatesEnabled(mode === "Personalizado");
   };
 
-  const paginatedData = tableData.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+  const handleFilter = () => {
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+
+    const filtered = tableData.filter((row) => {
+      // Parsear fecha "01/04/2026 14:30"
+      const [datePart, timePart] = row.fecha.split(" ");
+      const [day, month, year] = datePart.split("/").map(Number);
+      const rowDate = new Date(year, month - 1, day);
+      return rowDate >= from && rowDate <= to;
+    });
+    setFilteredTableData(filtered);
+    setPage(1);
+  };
+
+  const paginatedData = filteredTableData.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   return (
     <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -267,6 +285,7 @@ export function HistorialPage() {
               />
             </div>
             <button 
+              onClick={handleFilter}
               disabled={!customDatesEnabled}
               className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >

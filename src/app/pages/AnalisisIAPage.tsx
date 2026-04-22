@@ -1,7 +1,6 @@
 import {
   BrainCircuit,
   Calendar,
-  ChevronDown,
   Filter,
   AlertTriangle,
   CheckCircle2,
@@ -31,8 +30,21 @@ export function AnalisisIAPage() {
   const [selectedId, setSelectedId] = useState(analyses[0]?.id || 1);
   const [fromDate, setFromDate] = useState("2026-04-01");
   const [toDate, setToDate] = useState("2026-04-01");
+  const [filteredAnalyses, setFilteredAnalyses] = useState(analyses);
 
-  const selected = analyses.find((a) => a.id === selectedId) || analyses[0];
+  const selected = filteredAnalyses.find((a) => a.id === selectedId) || filteredAnalyses[0];
+
+  const handleFilter = () => {
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+
+    const filtered = analyses.filter((a) => {
+      const date = new Date(a.fechaISO);
+      return date >= from && date <= to;
+    });
+    setFilteredAnalyses(filtered);
+  };
 
   const handleGenerateAnalysis = () => {
     setIsGenerating(true);
@@ -151,7 +163,7 @@ Los Sólidos Disueltos Totales indican una mineralización moderada, adecuada pa
               className="text-xs text-slate-700 bg-transparent border-none outline-none"
             />
           </div>
-          <span className="text-slate-400">→</span>
+          <span className="text-slate-400 text-sm">→</span>
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
             <label className="text-xs text-slate-500">Hasta</label>
             <input
@@ -161,10 +173,13 @@ Los Sólidos Disueltos Totales indican una mineralización moderada, adecuada pa
               className="text-xs text-slate-700 bg-transparent border-none outline-none"
             />
           </div>
-          <button className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm">
+          <button 
+            onClick={handleFilter}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm"
+          >
             <Filter size={12} /> Filtrar
           </button>
-          <span className="text-xs text-slate-500 ml-auto">{analyses.length} análisis encontrados</span>
+          <span className="text-xs text-slate-500 ml-auto">{filteredAnalyses.length} análisis encontrados</span>
         </div>
       </div>
 
@@ -178,7 +193,7 @@ Los Sólidos Disueltos Totales indican una mineralización moderada, adecuada pa
               <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{analyses.length}</span>
             </div>
             <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto">
-              {analyses.map((a) => (
+              {filteredAnalyses.map((a) => (
                 <button
                   key={a.id}
                   onClick={() => setSelectedId(a.id)}
@@ -218,7 +233,7 @@ Los Sólidos Disueltos Totales indican una mineralización moderada, adecuada pa
 
             <div className="p-3 border-t border-slate-100">
               <button 
-                onClick={handleGenerateAnalysis}
+                onClick={handleFilter}
                 disabled={isGenerating}
                 className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-500 to-blue-600 rounded-xl py-2.5 hover:from-violet-600 hover:to-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
