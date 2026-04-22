@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Waves,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -28,6 +29,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { useNavigate } from "react-router";
+import { useState } from "react";
 
 const realtimeData = [
   { time: "14:00", ph: 7.1, temp: 23.0, turb: 2.9, tds: 316 },
@@ -198,11 +200,76 @@ const MiniTooltip = ({ active, payload, label, unit }: any) => {
   return null;
 };
 
+const sensorMeta = [
+  { key: "ph", label: "pH", unit: "", icon: Droplets, color: "text-cyan-600", bg: "bg-cyan-50", border: "border-cyan-100" },
+  { key: "temp", label: "Temperatura", unit: "°C", icon: Thermometer, color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100" },
+  { key: "turb", label: "Turbidez", unit: "NTU", icon: Eye, color: "text-purple-500", bg: "bg-purple-50", border: "border-purple-100" },
+  { key: "tds", label: "TDS", unit: "ppm", icon: Zap, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100" },
+];
+
 export function DashboardPage() {
   const navigate = useNavigate();
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerateAnalysis = () => {
+    setIsGenerating(true);
+    setTimeout(() => {
+      setIsGenerating(false);
+      navigate("/analisis-ia");
+    }, 7000);
+  };
 
   return (
     <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Modal de generación */}
+      {isGenerating && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center">
+                <BrainCircuit size={18} className="text-violet-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Generando análisis IA</h3>
+                <p className="text-xs text-slate-500">Procesando datos de sensores...</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Leyendo sensores</span>
+                <Loader2 size={14} className="text-violet-500 animate-spin" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {sensorMeta.map((s) => (
+                  <div key={s.key} className={`rounded-lg ${s.bg} border ${s.border} p-2.5`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <s.icon size={12} className={s.color} />
+                      <span className="text-xs text-slate-600">{s.label}</span>
+                    </div>
+                    <p className={`text-lg font-bold ${s.color}`} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                      {s.key === "ph" ? "7.1" : s.key === "temp" ? "23.5" : s.key === "turb" ? "3.4" : "321"}
+                      <span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-violet-50 border border-violet-100 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Loader2 size={14} className="text-violet-600 animate-spin" />
+                <span className="text-xs font-medium text-violet-700">Procesando con IA...</span>
+              </div>
+              <div className="w-full bg-violet-200 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-violet-600 h-full rounded-full animate-pulse" style={{ width: "70%" }}></div>
+              </div>
+              <p className="text-xs text-violet-600 mt-2">Tiempo estimado: ~7 segundos</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -419,9 +486,22 @@ export function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-2 mt-3">
-          <button className="flex items-center gap-1.5 text-xs font-medium text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-3.5 py-2 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm">
-            <BrainCircuit size={12} />
-            Generar nuevo análisis
+          <button 
+            onClick={handleGenerateAnalysis}
+            disabled={isGenerating}
+            className="flex items-center gap-1.5 text-xs font-medium text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-3.5 py-2 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                Generando...
+              </>
+            ) : (
+              <>
+                <BrainCircuit size={12} />
+                Generar nuevo análisis
+              </>
+            )}
           </button>
           <span className="text-xs text-slate-400">Latencia estimada: ~40 s</span>
         </div>

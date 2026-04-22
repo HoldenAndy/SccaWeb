@@ -180,13 +180,23 @@ export function HistorialPage() {
   const [toDate, setToDate] = useState("2026-04-01");
   const [activeParams, setActiveParams] = useState(["ph", "temperatura", "turbidez", "tds"]);
   const [page, setPage] = useState(1);
+  const [filterMode, setFilterMode] = useState("7días");
+  const [customDatesEnabled, setCustomDatesEnabled] = useState(false);
   const totalPages = 12;
+  const itemsPerPage = 8;
 
   const toggleParam = (key: string) => {
     setActiveParams((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
   };
+
+  const handleFilterModeChange = (mode: string) => {
+    setFilterMode(mode);
+    setCustomDatesEnabled(mode === "Personalizado");
+  };
+
+  const paginatedData = tableData.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   return (
     <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -219,11 +229,12 @@ export function HistorialPage() {
 
           {/* Quick presets */}
           <div className="flex items-center gap-1.5 ml-1">
-            {["Hoy", "7 días", "30 días", "Personalizado"].map((opt, i) => (
+            {["Hoy", "7 días", "30 días", "Personalizado"].map((opt) => (
               <button
                 key={opt}
+                onClick={() => handleFilterModeChange(opt)}
                 className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors border ${
-                  i === 1
+                  filterMode === opt
                     ? "bg-cyan-500 text-white border-cyan-500 shadow-sm"
                     : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
                 }`}
@@ -234,26 +245,31 @@ export function HistorialPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+            <div className={`flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 ${!customDatesEnabled ? 'opacity-50' : ''}`}>
               <label className="text-xs text-slate-500">Desde</label>
               <input
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="text-xs text-slate-700 bg-transparent border-none outline-none"
+                disabled={!customDatesEnabled}
+                className="text-xs text-slate-700 bg-transparent border-none outline-none disabled:cursor-not-allowed"
               />
             </div>
             <span className="text-slate-400 text-sm">→</span>
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+            <div className={`flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 ${!customDatesEnabled ? 'opacity-50' : ''}`}>
               <label className="text-xs text-slate-500">Hasta</label>
               <input
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="text-xs text-slate-700 bg-transparent border-none outline-none"
+                disabled={!customDatesEnabled}
+                className="text-xs text-slate-700 bg-transparent border-none outline-none disabled:cursor-not-allowed"
               />
             </div>
-            <button className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm">
+            <button 
+              disabled={!customDatesEnabled}
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Filter size={12} /> Aplicar
             </button>
           </div>
@@ -417,7 +433,7 @@ export function HistorialPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {tableData.map((row, i) => {
+              {paginatedData.map((row, i) => {
                 const ph   = phLevel(row.ph);
                 const temp = tempLevel(row.temp);
                 const turb = turbLevel(row.turb);
@@ -468,33 +484,46 @@ export function HistorialPage() {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500"
+              disabled={page === 1}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft size={13} />
             </button>
-            {[1, 2, 3].map((p) => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                  page === p
-                    ? "bg-cyan-500 text-white border border-cyan-500"
-                    : "border border-slate-200 text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-            <span className="text-slate-400 text-xs px-1">...</span>
-            <button
-              onClick={() => setPage(totalPages)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors"
-            >
-              {totalPages}
-            </button>
+            {[...Array(Math.min(3, totalPages))].map((_, i) => {
+              const pageNum = i + 1;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                    page === pageNum
+                      ? "bg-cyan-500 text-white border border-cyan-500"
+                      : "border border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            {totalPages > 3 && (
+              <>
+                <span className="text-slate-400 text-xs px-1">...</span>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg border text-xs font-medium transition-colors ${
+                    page === totalPages
+                      ? "bg-cyan-500 text-white border-cyan-500"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {totalPages}
+                </button>
+              </>
+            )}
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500"
+              disabled={page === totalPages}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight size={13} />
             </button>
