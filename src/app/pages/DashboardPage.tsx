@@ -30,6 +30,7 @@ import {
 } from "recharts";
 import { useNavigate } from "react-router";
 import { useState } from "react";
+import { useAnalysis } from "../contexts/AnalysisContext";
 
 const realtimeData = [
   { time: "14:00", ph: 7.1, temp: 23.0, turb: 2.9, tds: 316 },
@@ -209,11 +210,37 @@ const sensorMeta = [
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const [isGenerating, setIsGenerating] = useState(false);
+  const { addAnalysis, isGenerating, setIsGenerating, analyses } = useAnalysis();
 
   const handleGenerateAnalysis = () => {
     setIsGenerating(true);
     setTimeout(() => {
+      const newAnalysis = {
+        id: analyses.length + 1,
+        fecha: new Date().toLocaleString("es-ES", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }).replace(",", ""),
+        fechaISO: new Date().toISOString().split("T")[0],
+        resumen: "Nuevo análisis generado desde Dashboard — Parámetros dentro de rangos normales.",
+        estado: "Normal",
+        ph: +(6.8 + Math.random() * 0.6).toFixed(1),
+        temp: +(22 + Math.random() * 3).toFixed(1),
+        turb: +(1.5 + Math.random() * 2).toFixed(1),
+        tds: Math.floor(290 + Math.random() * 40),
+        tiempo: "43s",
+        texto: `Análisis generado desde el Dashboard. Todos los parámetros del agua se encuentran dentro de los rangos aceptables para uso doméstico y consumo seguro.
+
+El pH indica un nivel óptimo para consumo. La temperatura es adecuada. La turbidez refleja agua con buena claridad visual.
+
+Los Sólidos Disueltos Totales indican una mineralización moderada, adecuada para consumo humano.`,
+        recomendacion: "Continuar con el monitoreo regular. No se requieren acciones inmediatas.",
+        alerta: null,
+      };
+      addAnalysis(newAnalysis);
       setIsGenerating(false);
       navigate("/analisis-ia");
     }, 7000);
