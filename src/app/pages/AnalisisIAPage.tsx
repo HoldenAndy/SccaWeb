@@ -1,0 +1,313 @@
+import {
+  BrainCircuit,
+  Calendar,
+  ChevronDown,
+  Filter,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  MessageSquare,
+  Sparkles,
+  Droplets,
+  Thermometer,
+  Eye,
+  Zap,
+  Waves,
+  RefreshCw,
+  Info,
+} from "lucide-react";
+import { useState } from "react";
+
+const mockAnalyses = [
+  {
+    id: 1,
+    fecha: "01/04/2026 14:32",
+    fechaISO: "2026-04-01",
+    resumen: "Turbidez elevada detectada — revisión de filtros recomendada.",
+    estado: "Aviso",
+    ph: 7.1,
+    temp: 23.5,
+    turb: 3.4,
+    tds: 321,
+    tiempo: "42s",
+    texto: `El análisis de los parámetros del agua indica condiciones generalmente aceptables para consumo y uso doméstico.
+
+El pH de 7.1 se encuentra dentro del rango neutro óptimo (6.5–8.5), lo que indica que el agua no es ni ácida ni alcalina en exceso, un indicador positivo de su calidad general.
+
+La temperatura de 23.5 °C es adecuada y no representa riesgo microbiológico por temperatura extrema, manteniéndose dentro del rango recomendado.
+
+Sin embargo, se detecta que la turbidez de 3.4 NTU está aproximándose al límite aceptable de 4 NTU. Esto puede indicar la presencia de partículas en suspensión como sedimentos finos, materia orgánica o inicio de proliferación de microorganismos. Se recomienda revisar el sistema de filtración.
+
+Los Sólidos Disueltos Totales (321 ppm) están dentro de los parámetros normales para agua de uso doméstico, sin representar riesgo inmediato.`,
+    recomendacion: "Revisar el prefiltro del sistema de filtración y aumentar la frecuencia de monitoreo de turbidez durante las próximas 3–4 horas.",
+    alerta: { param: "Turbidez", valor: "3.4 NTU", limite: "4.0 NTU" },
+  },
+  {
+    id: 2,
+    fecha: "01/04/2026 10:00",
+    fechaISO: "2026-04-01",
+    resumen: "Todos los parámetros dentro de rangos normales. Sin alertas.",
+    estado: "Normal",
+    ph: 7.3,
+    temp: 22.8,
+    turb: 2.1,
+    tds: 305,
+    tiempo: "38s",
+    texto: `Todos los parámetros del agua analizados se encuentran dentro de los rangos aceptables para uso doméstico y consumo seguro.
+
+El pH de 7.3 indica un nivel levemente básico pero completamente dentro del rango saludable. La temperatura de 22.8 °C es óptima. La turbidez de 2.1 NTU refleja agua con buena claridad visual y baja concentración de partículas en suspensión.
+
+Los Sólidos Disueltos Totales de 305 ppm indican una mineralización moderada, adecuada para consumo humano.`,
+    recomendacion: "No se requieren acciones inmediatas. Continuar con el monitoreo regular cada 30 minutos.",
+    alerta: null,
+  },
+  {
+    id: 3,
+    fecha: "31/03/2026 20:15",
+    fechaISO: "2026-03-31",
+    resumen: "Condiciones óptimas. pH estable, turbidez baja.",
+    estado: "Normal",
+    ph: 7.2,
+    temp: 21.5,
+    turb: 1.8,
+    tds: 298,
+    tiempo: "45s",
+    texto: `El agua muestra condiciones óptimas en todos los parámetros evaluados. El pH de 7.2 es prácticamente neutro, ideal para consumo. La temperatura de 21.5 °C es adecuada. La turbidez de 1.8 NTU es excelente, indicando agua muy clara. Los TDS de 298 ppm son adecuados.`,
+    recomendacion: "Condiciones ideales. Mantener el sistema de monitoreo activo.",
+    alerta: null,
+  },
+];
+
+const sensorMeta = [
+  { key: "ph", label: "pH", unit: "", icon: Droplets, color: "text-cyan-600", bg: "bg-cyan-50", border: "border-cyan-100" },
+  { key: "temp", label: "Temperatura", unit: "°C", icon: Thermometer, color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100" },
+  { key: "turb", label: "Turbidez", unit: "NTU", icon: Eye, color: "text-purple-500", bg: "bg-purple-50", border: "border-purple-100" },
+  { key: "tds", label: "TDS", unit: "ppm", icon: Zap, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100" },
+];
+
+export function AnalisisIAPage() {
+  const [selectedId, setSelectedId] = useState(1);
+  const [fromDate, setFromDate] = useState("2026-04-01");
+  const [toDate, setToDate] = useState("2026-04-01");
+
+  const selected = mockAnalyses.find((a) => a.id === selectedId)!;
+
+  return (
+    <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <Waves size={18} className="text-cyan-500" />
+            <h1 className="text-xl font-bold text-slate-800">Análisis de Inteligencia Artificial</h1>
+          </div>
+          <p className="text-sm text-slate-500 ml-6.5">Interpretación cualitativa de la calidad del agua</p>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-3 py-1.5">
+          <Sparkles size={12} />
+          <span className="font-medium">Latencia máxima: ~60 s</span>
+        </div>
+      </div>
+
+      {/* Filter */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar size={15} className="text-slate-400" />
+            <span className="text-sm font-semibold text-slate-700">Filtrar análisis por fecha</span>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+            <label className="text-xs text-slate-500">Desde</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="text-xs text-slate-700 bg-transparent border-none outline-none"
+            />
+          </div>
+          <span className="text-slate-400">→</span>
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+            <label className="text-xs text-slate-500">Hasta</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="text-xs text-slate-700 bg-transparent border-none outline-none"
+            />
+          </div>
+          <button className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm">
+            <Filter size={12} /> Filtrar
+          </button>
+          <span className="text-xs text-slate-500 ml-auto">{mockAnalyses.length} análisis encontrados</span>
+        </div>
+      </div>
+
+      {/* Main layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Left: Analysis list */}
+        <div className="lg:col-span-1 space-y-3">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-800">Análisis disponibles</h2>
+              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{mockAnalyses.length}</span>
+            </div>
+            <div className="p-3 space-y-2">
+              {mockAnalyses.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setSelectedId(a.id)}
+                  className={`w-full text-left rounded-xl p-3 transition-all border ${
+                    selectedId === a.id
+                      ? "bg-gradient-to-r from-violet-50 to-blue-50 border-violet-200"
+                      : "bg-slate-50 border-transparent hover:bg-slate-100"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar size={11} className="text-slate-400" />
+                      <span className="text-xs font-medium text-slate-600">{a.fecha}</span>
+                    </div>
+                    {a.estado === "Aviso" ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Aviso
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Normal
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">{a.resumen}</p>
+                  <div className="flex items-center gap-3 mt-2">
+                    <span className="flex items-center gap-1 text-xs text-slate-400">
+                      <Clock size={9} /> {a.tiempo}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-slate-400">
+                      <BrainCircuit size={9} /> IA procesada
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="p-3 border-t border-slate-100">
+              <button className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-500 to-blue-600 rounded-xl py-2.5 hover:from-violet-600 hover:to-blue-700 transition-all shadow-sm">
+                <BrainCircuit size={13} />
+                Generar nuevo análisis
+              </button>
+              <p className="text-xs text-slate-400 text-center mt-2">Procesamiento: ~40–60 segundos</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Analysis detail */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Sensor values */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Parámetros del análisis</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Valores registrados al momento del análisis</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <Calendar size={10} /> {selected.fecha}
+                </span>
+                <span className="flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <Clock size={10} /> {selected.tiempo}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {sensorMeta.map((s) => {
+                const val = selected[s.key as keyof typeof selected] as number;
+                return (
+                  <div key={s.key} className={`rounded-xl ${s.bg} border ${s.border} p-3 text-center`}>
+                    <div className="flex items-center justify-center mb-2">
+                      <s.icon size={16} className={s.color} />
+                    </div>
+                    <p className="text-xs text-slate-500 mb-0.5">{s.label}</p>
+                    <p
+                      className={`text-2xl font-bold ${s.color}`}
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {val}
+                      <span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span>
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* AI text */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center">
+                <BrainCircuit size={16} className="text-violet-600" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Análisis generado por IA</h2>
+                <p className="text-xs text-slate-400">Interpretación en lenguaje natural · Modelo GPT-4o</p>
+              </div>
+              {selected.estado === "Normal" ? (
+                <span className="ml-auto flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1">
+                  <CheckCircle2 size={11} /> Sin alertas
+                </span>
+              ) : (
+                <span className="ml-auto flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2.5 py-1">
+                  <AlertTriangle size={11} /> Aviso detectado
+                </span>
+              )}
+            </div>
+
+            {/* AI text block */}
+            <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl p-4 border border-slate-100">
+              <div className="flex items-start gap-2.5">
+                <MessageSquare size={15} className="text-violet-400 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                  {selected.texto}
+                </p>
+              </div>
+            </div>
+
+            {/* Recommendation */}
+            <div className="mt-4 flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3.5">
+              <Info size={15} className="text-blue-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-blue-800 mb-0.5">Recomendación</p>
+                <p className="text-xs text-blue-700 leading-relaxed">{selected.recomendacion}</p>
+              </div>
+            </div>
+
+            {/* Alert block if warning */}
+            {selected.alerta && (
+              <div className="mt-3 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
+                <AlertTriangle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-800 mb-0.5">Parámetro fuera de rango óptimo</p>
+                  <p className="text-xs text-amber-700">
+                    <strong>{selected.alerta.param}:</strong> {selected.alerta.valor} — Límite máximo recomendado: {selected.alerta.limite}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-100">
+              <button className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-violet-500 to-blue-600 rounded-lg px-3.5 py-2 hover:from-violet-600 hover:to-blue-700 transition-all shadow-sm">
+                <RefreshCw size={11} />
+                Regenerar análisis
+              </button>
+              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                <CheckCircle2 size={11} className="text-emerald-500" />
+                Generado en {selected.tiempo} · hace 2 min
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
