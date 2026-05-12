@@ -1,0 +1,14 @@
+# Dependencias
+node_modules/
+dist/
+tmp/
+out/
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
