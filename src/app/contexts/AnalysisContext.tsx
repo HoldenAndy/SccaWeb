@@ -1,11 +1,22 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import {
+  createContext, useContext, useState, useEffect, useCallback, ReactNode,
+} from "react";
+import { generarAnalisis, getAnalisisPorNodoPaginado, type AnalisisDTO } from "../../api/analisis";
+import {
+  getUltimaLectura, getHistorialCompleto,
+  parseFechaBackend, toLocalISOString,
+  type LecturaDTO,
+} from "../../api/lecturas";
+import { getImagenPorLectura } from "../../api/imagenes";
+import { getNodos } from "../../api/nodos";
 
-interface Analysis {
+export interface AnalisisEnriquecido {
   id: number;
+  idLectura: number;
   fecha: string;
   fechaISO: string;
   resumen: string;
-  estado: string;
+  estado: "Normal" | "Aviso";
   ph: number;
   temp: number;
   turb: number;
@@ -17,93 +28,188 @@ interface Analysis {
 }
 
 interface AnalysisContextType {
-  analyses: Analysis[];
-  addAnalysis: (analysis: Analysis) => void;
+  analyses: AnalisisEnriquecido[];
+  ultimaLectura: LecturaDTO | null;
+  idNodoActivo: number | null;
   isGenerating: boolean;
-  setIsGenerating: (value: boolean) => void;
+  loadingInit: boolean;
+  errorInit: string | null;
+  lecturaConImagen: boolean;
+  setIsGenerating: (v: boolean) => void;
+  addAnalysis: (a: AnalisisEnriquecido) => void;
+  generarNuevoAnalisis: () => Promise<void>;
+  recargarAnalisis: () => Promise<void>;
+}
+
+
+function formatFecha(fecha: string | number[]): string {
+  const d = parseFechaBackend(fecha);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function getFechaISO(fecha: string | number[]): string {
+  return parseFechaBackend(fecha).toISOString().split("T")[0];
+}
+
+function msToTiempo(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${Math.round(ms / 1000)}s`;
+}
+
+function detectarAlerta(turb: number, ph: number): AnalisisEnriquecido["alerta"] {
+  if (turb > 4)          return { param: "Turbidez", valor: `${turb} NTU`, limite: "4.0 NTU" };
+  if (ph < 6.5 || ph > 8.5) return { param: "pH", valor: `${ph}`, limite: "6.5 – 8.5" };
+  return null;
+}
+
+function enriquecer(a: AnalisisDTO, lecturaMap: Map<number, LecturaDTO>): AnalisisEnriquecido {
+  const lec  = lecturaMap.get(a.idLectura);
+  const ph   = lec?.ph ?? 0;
+  const temp = lec?.temperatura ?? 0;
+  const turb = lec?.turbidez ?? 0;
+  const tds  = lec?.tds ?? 0;
+
+  const alerta = detectarAlerta(turb, ph);
+  const primeraLinea = a.resultadoTexto.split("\n").find((l) => l.trim()) ?? "";
+  const resumen = primeraLinea.length > 120 ? primeraLinea.slice(0, 120) + "…" : primeraLinea;
+
+  const lineas = a.resultadoTexto.split("\n").map((l) => l.trim()).filter(Boolean);
+  const recIdx = lineas.findLastIndex((l) => /^(Se recomienda|Recomendaci)/i.test(l));
+  const recomendacion = recIdx !== -1 ? lineas[recIdx] : "Continuar con el monitoreo regular.";
+
+  return {
+    id: a.idAnalisis,
+    idLectura: a.idLectura,
+    fecha: formatFecha(a.fechaHora),
+    fechaISO: getFechaISO(a.fechaHora),
+    resumen,
+    estado: alerta ? "Aviso" : "Normal",
+    ph, temp, turb, tds,
+    tiempo: msToTiempo(a.tiempoResMs),
+    texto: a.resultadoTexto,
+    recomendacion,
+    alerta,
+  };
 }
 
 const AnalysisContext = createContext<AnalysisContextType | undefined>(undefined);
 
-const mockAnalyses: Analysis[] = [
-  {
-    id: 1,
-    fecha: "01/04/2026 14:32",
-    fechaISO: "2026-04-01",
-    resumen: "Turbidez elevada detectada — revisión de filtros recomendada.",
-    estado: "Aviso",
-    ph: 7.1,
-    temp: 23.5,
-    turb: 3.4,
-    tds: 321,
-    tiempo: "42s",
-    texto: `El análisis de los parámetros del agua indica condiciones generalmente aceptables para consumo y uso doméstico.
-
-El pH de 7.1 se encuentra dentro del rango neutro óptimo (6.5–8.5), lo que indica que el agua no es ni ácida ni alcalina en exceso, un indicador positivo de su calidad general.
-
-La temperatura de 23.5 °C es adecuada y no representa riesgo microbiológico por temperatura extrema, manteniéndose dentro del rango recomendado.
-
-Sin embargo, se detecta que la turbidez de 3.4 NTU está aproximándose al límite aceptable de 4 NTU. Esto puede indicar la presencia de partículas en suspensión como sedimentos finos, materia orgánica o inicio de proliferación de microorganismos. Se recomienda revisar el sistema de filtración.
-
-Los Sólidos Disueltos Totales (321 ppm) están dentro de los parámetros normales para agua de uso doméstico, sin representar riesgo inmediato.`,
-    recomendacion: "Revisar el prefiltro del sistema de filtración y aumentar la frecuencia de monitoreo de turbidez durante las próximas 3–4 horas.",
-    alerta: { param: "Turbidez", valor: "3.4 NTU", limite: "4.0 NTU" },
-  },
-  {
-    id: 2,
-    fecha: "01/04/2026 10:00",
-    fechaISO: "2026-04-01",
-    resumen: "Todos los parámetros dentro de rangos normales. Sin alertas.",
-    estado: "Normal",
-    ph: 7.3,
-    temp: 22.8,
-    turb: 2.1,
-    tds: 305,
-    tiempo: "38s",
-    texto: `Todos los parámetros del agua analizados se encuentran dentro de los rangos aceptables para uso doméstico y consumo seguro.
-
-El pH de 7.3 indica un nivel levemente básico pero completamente dentro del rango saludable. La temperatura de 22.8 °C es óptima. La turbidez de 2.1 NTU refleja agua con buena claridad visual y baja concentración de partículas en suspensión.
-
-Los Sólidos Disueltos Totales de 305 ppm indican una mineralización moderada, adecuada para consumo humano.`,
-    recomendacion: "No se requieren acciones inmediatas. Continuar con el monitoreo regular cada 30 minutos.",
-    alerta: null,
-  },
-  {
-    id: 3,
-    fecha: "31/03/2026 20:15",
-    fechaISO: "2026-03-31",
-    resumen: "Condiciones óptimas. pH estable, turbidez baja.",
-    estado: "Normal",
-    ph: 7.2,
-    temp: 21.5,
-    turb: 1.8,
-    tds: 298,
-    tiempo: "45s",
-    texto: `El agua muestra condiciones óptimas en todos los parámetros evaluados. El pH de 7.2 es prácticamente neutro, ideal para consumo. La temperatura de 21.5 °C es adecuada. La turbidez de 1.8 NTU es excelente, indicando agua muy clara. Los TDS de 298 ppm son adecuados.`,
-    recomendacion: "Condiciones ideales. Mantener el sistema de monitoreo activo.",
-    alerta: null,
-  },
-];
-
 export function AnalysisProvider({ children }: { children: ReactNode }) {
-  const [analyses, setAnalyses] = useState<Analysis[]>(mockAnalyses);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [analyses, setAnalyses]                 = useState<AnalisisEnriquecido[]>([]);
+  const [ultimaLectura, setUltimaLectura]       = useState<LecturaDTO | null>(null);
+  const [idNodoActivo, setIdNodoActivo]         = useState<number | null>(null);
+  const [lecturaMap, setLecturaMap]             = useState<Map<number, LecturaDTO>>(new Map());
+  const [isGenerating, setIsGenerating]         = useState(false);
+  const [loadingInit, setLoadingInit]           = useState(true);
+  const [errorInit, setErrorInit]               = useState<string | null>(null);
+  const [lecturaConImagen, setLecturaConImagen] = useState(false); // FIX #7
 
-  const addAnalysis = (analysis: Analysis) => {
-    setAnalyses((prev) => [analysis, ...prev]);
-  };
+  const cargarDatos = useCallback(async () => {
+    try {
+      setLoadingInit(true);
+      setErrorInit(null);
+
+      // 1. Nodo activo — esto sí es crítico, sin nodo no hay nada que mostrar
+      const nodos = await getNodos();
+      const nodo = nodos.find((n) => n.estadoConexion) ?? nodos[0] ?? null;
+      if (!nodo) { setErrorInit("No se encontraron nodos en el backend."); return; }
+      setIdNodoActivo(nodo.idNodo);
+
+      // 2. Última lectura — puede no existir si el nodo aún no envió datos.
+      //    No abortar: dejar ultimaLectura en null y continuar.
+      let ultima: LecturaDTO | null = null;
+      try {
+        ultima = await getUltimaLectura(nodo.idNodo);
+        setUltimaLectura(ultima);
+      } catch {
+        // 404: nodo sin lecturas todavía — es válido
+        setUltimaLectura(null);
+      }
+
+      // 3. Verificar imagen solo si hay lectura
+      if (ultima) {
+        try {
+          await getImagenPorLectura(ultima.idLectura);
+          setLecturaConImagen(true);
+        } catch {
+          setLecturaConImagen(false);
+        }
+      } else {
+        setLecturaConImagen(false);
+      }
+
+      // 4. Historial de lecturas para el mapa idLectura → sensores
+      const map = new Map<number, LecturaDTO>();
+      try {
+        const lecturas = await getHistorialCompleto(nodo.idNodo);
+        for (const l of lecturas) map.set(l.idLectura, l);
+        if (ultima) map.set(ultima.idLectura, ultima);
+      } catch {
+        // Sin lecturas — el mapa queda vacío, los análisis mostrarán 0 en sensores
+      }
+      setLecturaMap(map);
+
+      // 5. Historial de análisis del nodo (último año)
+      try {
+        const fin    = new Date();
+        const inicio = new Date(fin);
+        inicio.setFullYear(inicio.getFullYear() - 1);
+        const page = await getAnalisisPorNodoPaginado(
+          nodo.idNodo,
+          toLocalISOString(inicio),
+          toLocalISOString(fin),
+          0,
+          50
+        );
+        setAnalyses(page.content.map((a) => enriquecer(a, map)));
+      } catch {
+        // Sin análisis todavía — lista vacía
+        setAnalyses([]);
+      }
+
+    } catch (err: unknown) {
+      // Solo llega aquí si falla getNodos() — error real de conexión
+      setErrorInit(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingInit(false);
+    }
+  }, []);
+
+  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  // FIX #4: este es el único lugar que maneja isGenerating.
+  // Los componentes NO deben llamar setIsGenerating por separado.
+  const generarNuevoAnalisis = useCallback(async () => {
+    if (!ultimaLectura) return;
+    setIsGenerating(true);
+    try {
+      const dto = await generarAnalisis(ultimaLectura.idLectura);
+      const nuevaMap = new Map(lecturaMap);
+      nuevaMap.set(ultimaLectura.idLectura, ultimaLectura);
+      setLecturaMap(nuevaMap);
+      setAnalyses((prev) => [enriquecer(dto, nuevaMap), ...prev]);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [ultimaLectura, lecturaMap]);
+
+  const addAnalysis = useCallback((a: AnalisisEnriquecido) => {
+    setAnalyses((prev) => [a, ...prev]);
+  }, []);
 
   return (
-    <AnalysisContext.Provider value={{ analyses, addAnalysis, isGenerating, setIsGenerating }}>
+    <AnalysisContext.Provider value={{
+      analyses, ultimaLectura, idNodoActivo,
+      isGenerating, loadingInit, errorInit, lecturaConImagen,
+      setIsGenerating, addAnalysis, generarNuevoAnalisis, recargarAnalisis: cargarDatos,
+    }}>
       {children}
     </AnalysisContext.Provider>
   );
 }
 
 export function useAnalysis() {
-  const context = useContext(AnalysisContext);
-  if (context === undefined) {
-    throw new Error("useAnalysis must be used within an AnalysisProvider");
-  }
-  return context;
+  const ctx = useContext(AnalysisContext);
+  if (!ctx) throw new Error("useAnalysis must be used within AnalysisProvider");
+  return ctx;
 }
