@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
+import { PageStateGuard } from "../components/PageStateGuard";
 
 const sensorMeta = [
   { key: "ph",   label: "pH",          unit: "",    icon: Droplets,    color: "text-cyan-600",   bg: "bg-cyan-50",   border: "border-cyan-100" },
@@ -57,8 +58,9 @@ export function AnalisisIAPage() {
     await generarNuevoAnalisis();
   };
 
-  if (loadingInit)
-    return <div className="flex items-center justify-center min-h-64"><Loader2 size={24} className="text-cyan-500 animate-spin" /><span className="ml-2 text-sm text-slate-500">Cargando análisis...</span></div>;
+  const { errorInit } = useAnalysis();
+  const guardEl = <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Cargando análisis..." />;
+  if (loadingInit || errorInit) return guardEl;
 
   return (
     <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
