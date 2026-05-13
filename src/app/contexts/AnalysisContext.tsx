@@ -8,7 +8,8 @@ import {
   type LecturaDTO,
 } from "../../api/lecturas";
 import { getImagenPorLectura } from "../../api/imagenes";
-import { getNodos } from "../../api/nodos";
+import { apiFetch } from "../../api/apiClient";
+import type { NodoDTO } from "../../api/nodos";
 
 export interface AnalisisEnriquecido {
   id: number;
@@ -31,6 +32,7 @@ interface AnalysisContextType {
   analyses: AnalisisEnriquecido[];
   ultimaLectura: LecturaDTO | null;
   idNodoActivo: number | null;
+  nodos: NodoDTO[];
   isGenerating: boolean;
   loadingInit: boolean;
   errorInit: string | null;
@@ -39,8 +41,8 @@ interface AnalysisContextType {
   addAnalysis: (a: AnalisisEnriquecido) => void;
   generarNuevoAnalisis: () => Promise<void>;
   recargarAnalisis: () => Promise<void>;
+  cambiarNodoActivo: (idNodo: number) => void;
 }
-
 
 function formatFecha(fecha: string | number[]): string {
   const d = parseFechaBackend(fecha);
@@ -57,8 +59,8 @@ function msToTiempo(ms: number): string {
 }
 
 function detectarAlerta(turb: number, ph: number): AnalisisEnriquecido["alerta"] {
-  if (turb > 4)          return { param: "Turbidez", valor: `${turb} NTU`, limite: "4.0 NTU" };
-  if (ph < 6.5 || ph > 8.5) return { param: "pH", valor: `${ph}`, limite: "6.5 – 8.5" };
+  if (turb > 4)              return { param: "Turbidez", valor: `${turb} NTU`, limite: "4.0 NTU" };
+  if (ph < 6.5 || ph > 8.5) return { param: "pH",       valor: `${ph}`,       limite: "6.5 – 8.5" };
   return null;
 }
 
@@ -98,35 +100,27 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [analyses, setAnalyses]                 = useState<AnalisisEnriquecido[]>([]);
   const [ultimaLectura, setUltimaLectura]       = useState<LecturaDTO | null>(null);
   const [idNodoActivo, setIdNodoActivo]         = useState<number | null>(null);
+  const [nodos, setNodos]                       = useState<NodoDTO[]>([]);
   const [lecturaMap, setLecturaMap]             = useState<Map<number, LecturaDTO>>(new Map());
   const [isGenerating, setIsGenerating]         = useState(false);
   const [loadingInit, setLoadingInit]           = useState(true);
   const [errorInit, setErrorInit]               = useState<string | null>(null);
-  const [lecturaConImagen, setLecturaConImagen] = useState(false); // FIX #7
+  const [lecturaConImagen, setLecturaConImagen] = useState(false);
 
-  const cargarDatos = useCallback(async () => {
+  // Carga todos los datos de un nodo específico
+  const cargarDatosDeNodo = useCallback(async (idNodo: number) => {
+    setLoadingInit(true);
     try {
-      setLoadingInit(true);
-      setErrorInit(null);
-
-      // 1. Nodo activo — esto sí es crítico, sin nodo no hay nada que mostrar
-      const nodos = await getNodos();
-      const nodo = nodos.find((n) => n.estadoConexion) ?? nodos[0] ?? null;
-      if (!nodo) { setErrorInit("No se encontraron nodos en el backend."); return; }
-      setIdNodoActivo(nodo.idNodo);
-
-      // 2. Última lectura — puede no existir si el nodo aún no envió datos.
-      //    No abortar: dejar ultimaLectura en null y continuar.
+      // 1. Última lectura
       let ultima: LecturaDTO | null = null;
       try {
-        ultima = await getUltimaLectura(nodo.idNodo);
+        ultima = await getUltimaLectura(idNodo);
         setUltimaLectura(ultima);
       } catch {
-        // 404: nodo sin lecturas todavía — es válido
         setUltimaLectura(null);
       }
 
-      // 3. Verificar imagen solo si hay lectura
+      // 2. Verificar si la última lectura tiene imagen asociada
       if (ultima) {
         try {
           await getImagenPorLectura(ultima.idLectura);
@@ -138,47 +132,75 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         setLecturaConImagen(false);
       }
 
-      // 4. Historial de lecturas para el mapa idLectura → sensores
+      // 3. Mapa idLectura → sensores
       const map = new Map<number, LecturaDTO>();
       try {
-        const lecturas = await getHistorialCompleto(nodo.idNodo);
+        const lecturas = await getHistorialCompleto(idNodo);
         for (const l of lecturas) map.set(l.idLectura, l);
         if (ultima) map.set(ultima.idLectura, ultima);
-      } catch {
-        // Sin lecturas — el mapa queda vacío, los análisis mostrarán 0 en sensores
-      }
+      } catch { /* sin lecturas */ }
       setLecturaMap(map);
 
-      // 5. Historial de análisis del nodo (último año)
+      // 4. Historial de análisis del nodo (último año)
       try {
         const fin    = new Date();
         const inicio = new Date(fin);
         inicio.setFullYear(inicio.getFullYear() - 1);
         const page = await getAnalisisPorNodoPaginado(
-          nodo.idNodo,
+          idNodo,
           toLocalISOString(inicio),
           toLocalISOString(fin),
-          0,
-          50
+          0, 50
         );
         setAnalyses(page.content.map((a) => enriquecer(a, map)));
       } catch {
-        // Sin análisis todavía — lista vacía
         setAnalyses([]);
       }
-
-    } catch (err: unknown) {
-      // Solo llega aquí si falla getNodos() — error real de conexión
-      setErrorInit(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingInit(false);
     }
   }, []);
 
+  // Carga inicial: obtiene los nodos y selecciona el primero activo
+  const cargarDatos = useCallback(async () => {
+    try {
+      setLoadingInit(true);
+      setErrorInit(null);
+
+      let todosNodos: NodoDTO[] = [];
+      try {
+        todosNodos = await apiFetch<NodoDTO[]>("/api/v1/nodos");
+      } catch {
+        try {
+          todosNodos = await apiFetch<NodoDTO[]>("/api/v1/nodos/mis-nodos");
+        } catch { /* sin nodos */ }
+      }
+
+      if (!todosNodos.length) {
+        setErrorInit("No se encontraron nodos en el backend.");
+        setLoadingInit(false);
+        return;
+      }
+
+      setNodos(todosNodos);
+      const nodoInicial = todosNodos.find((n) => n.estadoConexion) ?? todosNodos[0];
+      setIdNodoActivo(nodoInicial.idNodo);
+      await cargarDatosDeNodo(nodoInicial.idNodo);
+
+    } catch (err: unknown) {
+      setErrorInit(err instanceof Error ? err.message : String(err));
+      setLoadingInit(false);
+    }
+  }, [cargarDatosDeNodo]);
+
+  // Permite a cualquier componente cambiar el nodo activo
+  const cambiarNodoActivo = useCallback((idNodo: number) => {
+    setIdNodoActivo(idNodo);
+    cargarDatosDeNodo(idNodo);
+  }, [cargarDatosDeNodo]);
+
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  // FIX #4: este es el único lugar que maneja isGenerating.
-  // Los componentes NO deben llamar setIsGenerating por separado.
   const generarNuevoAnalisis = useCallback(async () => {
     if (!ultimaLectura) return;
     setIsGenerating(true);
@@ -199,9 +221,10 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
 
   return (
     <AnalysisContext.Provider value={{
-      analyses, ultimaLectura, idNodoActivo,
+      analyses, ultimaLectura, idNodoActivo, nodos,
       isGenerating, loadingInit, errorInit, lecturaConImagen,
-      setIsGenerating, addAnalysis, generarNuevoAnalisis, recargarAnalisis: cargarDatos,
+      setIsGenerating, addAnalysis, generarNuevoAnalisis,
+      recargarAnalisis: cargarDatos, cambiarNodoActivo,
     }}>
       {children}
     </AnalysisContext.Provider>

@@ -1,7 +1,7 @@
 import {
   Thermometer, Droplets, Eye, Zap, AlertTriangle, Camera, BrainCircuit,
   Clock, TrendingUp, TrendingDown, Minus, CheckCircle2, Waves, ChevronRight,
-  Loader2, RefreshCw,
+  Loader2, RefreshCw, Cpu,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -9,11 +9,11 @@ import {
 import { useNavigate } from "react-router";
 import { useState, useEffect, useCallback } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
+import { PageStateGuard } from "../components/PageStateGuard";
 import { getDatosGraficos, parseFechaBackend, toLocalISOString, type LecturaDTO } from "../../api/lecturas";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
-// FIX #2: usa parseFechaBackend para soportar array o string
 function formatHora(fecha: string | number[]): string {
   const d = parseFechaBackend(fecha);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -66,11 +66,10 @@ const miniCharts = [
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  // FIX #10: removido addAnalysis (no se usa) y setIsGenerating (FIX #4)
   const {
-    ultimaLectura, idNodoActivo, isGenerating,
+    ultimaLectura, idNodoActivo, nodos, isGenerating,
     analyses, loadingInit, errorInit,
-    generarNuevoAnalisis, lecturaConImagen,
+    generarNuevoAnalisis, lecturaConImagen, cambiarNodoActivo,
   } = useAnalysis();
 
   const [chartData, setChartData] = useState<LecturaDTO[]>([]);
@@ -88,7 +87,6 @@ export function DashboardPage() {
     try {
       const fin    = new Date();
       const inicio = new Date(fin.getTime() - 2 * 60 * 60 * 1000);
-      // FIX #3: toLocalISOString en lugar de toISOString para evitar el "Z"
       const data = await getDatosGraficos(idNodoActivo, toLocalISOString(inicio), toLocalISOString(fin));
       setChartData(data);
     } catch { /* silencioso */ }
@@ -104,12 +102,11 @@ export function DashboardPage() {
   const lec = chartData[chartData.length - 1] ?? ultimaLectura;
 
   const segsDesde = lec
-    ? Math.floor((Date.now() - parseFechaBackend(lec.fechaHora).getTime()) / 1000) // FIX #2
+    ? Math.floor((Date.now() - parseFechaBackend(lec.fechaHora).getTime()) / 1000)
     : null;
 
   const turbWarning = lec && lec.turbidez > 3.5;
 
-  // FIX #4: NO hacer setIsGenerating manual — generarNuevoAnalisis lo maneja solo
   const handleGenerateAnalysis = async () => {
     await generarNuevoAnalisis();
     navigate("/analisis-ia");
@@ -117,24 +114,15 @@ export function DashboardPage() {
 
   // ── loading / error ───────────────────────────────────────────────────
 
-  if (loadingInit)
-    return <div className="flex flex-col items-center justify-center min-h-64 gap-3"><Loader2 size={28} className="text-cyan-500 animate-spin" /><p className="text-sm text-slate-500">Conectando con el backend...</p></div>;
+  const guardEl = <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Conectando con el backend..." />;
+  if (loadingInit || errorInit) return guardEl;
 
-  if (errorInit)
-    return (
-      <div className="flex flex-col items-center justify-center min-h-64 gap-3">
-        <AlertTriangle size={28} className="text-amber-500" />
-        <p className="text-sm font-semibold text-slate-700">No se pudo conectar al backend</p>
-        <p className="text-xs text-slate-400 text-center max-w-sm">{errorInit}</p>
-        <p className="text-xs text-slate-400">Verifica que el backend corra en <code>http://localhost:8080</code></p>
-      </div>
-    );
-
-  // FIX #2: formatear con parseFechaBackend para los gráficos
   const chartDataFormatted = chartData.map((d) => ({
     ...d,
     time: formatHora(d.fechaHora),
   }));
+
+  const nodoActual = nodos.find((n) => n.idNodo === idNodoActivo);
 
   return (
     <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -168,7 +156,6 @@ export function DashboardPage() {
             <div className="bg-violet-50 border border-violet-100 rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <Loader2 size={14} className="text-violet-600 animate-spin" />
-                {/* FIX #8: nombre correcto del modelo */}
                 <span className="text-xs font-medium text-violet-700">Procesando con Gemini Vision...</span>
               </div>
               <div className="w-full bg-violet-200 rounded-full h-1.5 overflow-hidden">
@@ -190,7 +177,27 @@ export function DashboardPage() {
             Monitoreo en tiempo real{segsDesde !== null && ` · Última lectura hace ${segsDesde}s`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+
+          {/* Selector de nodo — visible solo si hay más de uno */}
+          {nodos.length > 1 && (
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1.5 shadow-sm">
+              <Cpu size={12} className="text-slate-400" />
+              <select
+                value={idNodoActivo ?? ""}
+                onChange={(e) => cambiarNodoActivo(Number(e.target.value))}
+                className="text-xs text-slate-700 font-medium bg-transparent border-none outline-none cursor-pointer"
+              >
+                {nodos.map((n) => (
+                  <option key={n.idNodo} value={n.idNodo}>
+                    {n.ubicacion} ({n.macAddress})
+                  </option>
+                ))}
+              </select>
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${nodoActual?.estadoConexion ? "bg-emerald-500" : "bg-red-400"}`}></span>
+            </div>
+          )}
+
           <button onClick={cargarGraficos} disabled={loadingChart}
             className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50">
             <RefreshCw size={12} className={loadingChart ? "animate-spin" : ""} /> Refrescar
@@ -204,7 +211,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Alert banner */}
+      {/* Alert banner — turbidez */}
       {turbWarning && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 shadow-sm">
           <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -222,7 +229,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* FIX #7: aviso si la lectura no tiene imagen (análisis no disponible) */}
+      {/* Aviso sin imagen */}
       {!lecturaConImagen && !loadingInit && (
         <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 shadow-sm">
           <AlertTriangle size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />
@@ -314,10 +321,13 @@ export function DashboardPage() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-800">Cámara ESP32</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Imagen en tiempo real</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {nodoActual ? nodoActual.ubicacion : "Sin nodo seleccionado"}
+              </p>
             </div>
-            <span className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Live
+            <span className={`flex items-center gap-1 text-xs border rounded-full px-2 py-0.5 ${nodoActual?.estadoConexion ? "text-emerald-600 bg-emerald-50 border-emerald-200" : "text-slate-400 bg-slate-50 border-slate-200"}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${nodoActual?.estadoConexion ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`}></span>
+              {nodoActual?.estadoConexion ? "Live" : "Offline"}
             </span>
           </div>
           <div className="flex-1 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 flex flex-col items-center justify-center gap-3 min-h-[200px] relative overflow-hidden">
@@ -329,6 +339,14 @@ export function DashboardPage() {
               <p className="text-xs font-medium text-slate-300">640 × 480 px</p>
               <p className="text-xs text-slate-500 mt-0.5">Actualización: cada 10 s</p>
             </div>
+            {/* Indicador de MAC del nodo activo */}
+            {nodoActual && (
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center">
+                <span className="text-xs text-slate-500 font-mono bg-slate-900/60 px-2 py-0.5 rounded-full">
+                  {nodoActual.macAddress}
+                </span>
+              </div>
+            )}
             <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-cyan-400/50 rounded-tl"></div>
             <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-cyan-400/50 rounded-tr"></div>
             <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-cyan-400/50 rounded-bl"></div>
@@ -350,7 +368,6 @@ export function DashboardPage() {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-slate-800">Análisis IA — Resumen Actual</h2>
-                {/* FIX #8: nombre correcto del modelo */}
                 <p className="text-xs text-slate-400">Generado: {analyses[0].fecha} · {analyses[0].tiempo} · Gemini Flash Lite</p>
               </div>
             </div>
@@ -367,7 +384,6 @@ export function DashboardPage() {
             <p className="text-sm text-slate-700 leading-relaxed">{analyses[0].resumen}</p>
           </div>
           <div className="flex items-center gap-2 mt-3">
-            {/* FIX #7: botón deshabilitado si no hay imagen */}
             <button
               onClick={handleGenerateAnalysis}
               disabled={isGenerating || !ultimaLectura || !lecturaConImagen}

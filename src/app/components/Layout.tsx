@@ -1,4 +1,4 @@
-import { Outlet, NavLink } from "react-router";
+import { Outlet, NavLink, useNavigate } from "react-router";
 import {
   LayoutDashboard,
   LineChart,
@@ -9,14 +9,23 @@ import {
   X,
   Clock,
   Activity,
+  Users,
+  LogOut,
+  ChevronDown,
+  ScrollText,
+  Cpu,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext";
 
 const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, description: "Tiempo real" },
-  { to: "/historial", label: "Historial", icon: LineChart, description: "Datos históricos" },
-  { to: "/analisis-ia", label: "Análisis IA", icon: BrainCircuit, description: "Interpretación" },
-];
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, description: "Tiempo real", roles: null },
+  { to: "/historial", label: "Historial", icon: LineChart, description: "Datos históricos", roles: null },
+  { to: "/analisis-ia", label: "Análisis IA", icon: BrainCircuit, description: "Interpretación", roles: null },
+  { to: "/usuarios", label: "Usuarios",  icon: Users,       description: "Gestión de acceso", roles: ["ADMINISTRADOR"]           },
+  { to: "/logs",     label: "Logs",      icon: ScrollText,  description: "Eventos del servidor",  roles: ["ADMINISTRADOR", "SOPORTE"] },
+  { to: "/nodos",    label: "Nodos",     icon: Cpu,         description: "Dispositivos ESP32",    roles: ["ADMINISTRADOR", "SOPORTE", "GESTIONADOR"] },
+] as const;
 
 const systemStatus = [
   { label: "ESP32", status: "online" },
@@ -28,14 +37,41 @@ const systemStatus = [
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [time, setTime] = useState(new Date());
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const { user, logout, isAdmin, isSoporte } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handle = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-user-menu]")) setUserMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [userMenuOpen]);
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
   const timeStr = time.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const dateStr = time.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.roles) return true;
+    if (isAdmin) return true;
+    if (isSoporte && item.roles.includes("SOPORTE")) return true;
+    if (user?.rol === "GESTIONADOR" && item.roles.includes("GESTIONADOR")) return true;
+    return false;
+  });
 
   return (
     <div className="min-h-screen bg-[#f0f6ff] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -70,7 +106,7 @@ export function Layout() {
           <span className="text-xs font-medium text-emerald-700">ESP32 Conectado</span>
         </div>
 
-        {/* Right — clock + last update */}
+        {/* Right — clock + user menu */}
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex flex-col items-end">
             <div className="flex items-center gap-1.5">
@@ -84,6 +120,38 @@ export function Layout() {
           <div className="flex items-center gap-1.5 bg-cyan-50 border border-cyan-200 rounded-lg px-2.5 py-1">
             <Activity size={11} className="text-cyan-600" />
             <span className="text-xs font-medium text-cyan-700">En línea</span>
+          </div>
+          {/* User dropdown */}
+          <div className="relative" data-user-menu>
+            <button
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-1.5 transition-colors"
+            >
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                <span className="text-xs font-bold text-white">
+                  {user?.nombre?.charAt(0).toUpperCase() ?? "U"}
+                </span>
+              </div>
+              <span className="hidden sm:block text-xs font-medium text-slate-700 max-w-24 truncate">
+                {user?.nombre ?? "Usuario"}
+              </span>
+              <ChevronDown size={11} className="text-slate-500" />
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-52 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1.5 overflow-hidden">
+                <div className="px-3 py-2 border-b border-slate-100 mb-1">
+                  <p className="text-xs font-semibold text-slate-800 truncate">{user?.nombre}</p>
+                  <p className="text-xs text-slate-400 capitalize">{user?.rol?.toLowerCase().replace("_", " ")}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut size={13} />
+                  Cerrar sesión
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -106,7 +174,7 @@ export function Layout() {
 
           {/* Navigation */}
           <nav className="flex flex-col gap-1 px-3 flex-1">
-            {navItems.map(({ to, label, icon: Icon, description }) => (
+            {visibleNavItems.map(({ to, label, icon: Icon, description }) => (
               <NavLink
                 key={to}
                 to={to}

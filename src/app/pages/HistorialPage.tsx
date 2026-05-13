@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
+import { PageStateGuard } from "../components/PageStateGuard";
 import {
   getHistorialPaginado, getDatosGraficos,
   parseFechaBackend, toLocalISOString,
@@ -80,7 +81,7 @@ const chartConfigs = [
 // ─── main ─────────────────────────────────────────────────────────────────
 
 export function HistorialPage() {
-  const { idNodoActivo, loadingInit } = useAnalysis();
+  const { idNodoActivo, nodos, loadingInit, cambiarNodoActivo } = useAnalysis();
 
   const [filterMode, setFilterMode]               = useState("Hoy");
   const [fromDate, setFromDate]                   = useState(isoToday());
@@ -162,19 +163,51 @@ export function HistorialPage() {
     };
   };
 
+  // Exportar todos los datos del período actual como CSV
+  const handleExportCSV = useCallback(async () => {
+    if (!idNodoActivo) return;
+    try {
+      const [inicio, fin] = getRange();
+      // Obtener hasta 1000 registros para el CSV (páginas completas)
+      const data = await getDatosGraficos(idNodoActivo, inicio, fin);
+      if (!data.length) return;
+
+      const headers = ["ID Lectura", "Fecha / Hora", "pH", "Temperatura (°C)", "Turbidez (NTU)", "TDS (ppm)", "Estado"];
+      const rows = data.map((r) => [
+        r.idLectura,
+        formatFechaTabla(r.fechaHora),
+        r.ph,
+        r.temperatura,
+        r.turbidez,
+        r.tds,
+        getOverallStatus(r),
+      ]);
+
+      const csvContent = [headers, ...rows]
+        .map((row) => row.map((v) => `"${v}"`).join(","))
+        .join("\n");
+
+      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href     = url;
+      link.download = `historial_nodo${idNodoActivo}_${fromDate}_${toDate}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch { /* silencioso */ }
+  }, [idNodoActivo, getRange, fromDate, toDate]);
+
   // FIX #1: usar pageNumber (no number) y totalElements real del backend
   const totalPages    = pageData?.totalPages ?? 1;
   const totalElements = pageData?.totalElements ?? 0;
   const rows          = pageData?.content ?? [];
 
   // Esperar a que el Context termine de cargar antes de renderizar
-  if (loadingInit)
-    return (
-      <div className="flex items-center justify-center min-h-64 gap-2">
-        <Loader2 size={24} className="text-cyan-500 animate-spin" />
-        <span className="text-sm text-slate-500">Cargando historial...</span>
-      </div>
-    );
+  const { errorInit } = useAnalysis();
+  const guardEl = <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Cargando historial..." />;
+  if (loadingInit || errorInit) return guardEl;
 
   return (
     <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -190,7 +223,27 @@ export function HistorialPage() {
             {totalElements > 0 ? `${totalElements} registros encontrados` : "Evolución histórica de parámetros"}
           </p>
         </div>
-        <button className="flex items-center gap-1.5 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 transition-colors shadow-sm">
+        {nodos.length > 1 && (
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1.5 shadow-sm">
+            <select
+              value={idNodoActivo ?? ""}
+              onChange={(e) => cambiarNodoActivo(Number(e.target.value))}
+              className="text-xs text-slate-700 font-medium bg-transparent border-none outline-none cursor-pointer"
+            >
+              {nodos.map((n) => (
+                <option key={n.idNodo} value={n.idNodo}>
+                  {n.ubicacion}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <button
+          onClick={handleExportCSV}
+          disabled={!idNodoActivo || totalElements === 0}
+          className="flex items-center gap-1.5 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          title={totalElements === 0 ? "No hay datos para exportar" : "Descargar CSV"}
+        >
           <Download size={13} /> Exportar CSV
         </button>
       </div>
