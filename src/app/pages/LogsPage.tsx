@@ -1,33 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import {
   ScrollText, RefreshCw, AlertTriangle, Info, Loader2,
   CheckCircle2, XCircle, Waves, Filter,
+  type LucideProps,
 } from "lucide-react";
-import { apiFetch } from "../../api/apiClient";
+import { formatFechaConSegundos } from "../../lib/fechas";
+import { useLogs, type LogDTO } from "../hooks/useLogs";
+import { PageHeader } from "../components/shared/PageHeader";
 
-interface LogDTO {
-  idLog: number;
-  nivel: string;
-  modulo: string;
-  mensaje: string;
-  fechaHora: string | number[];
-}
+// formatFechaConSegundos centralizado en lib/fechas
 
-function parseFecha(fecha: string | number[]): Date {
-  if (Array.isArray(fecha)) {
-    const [y, mo, d, h = 0, mi = 0, s = 0] = fecha;
-    return new Date(y, mo - 1, d, h, mi, s);
-  }
-  return new Date(fecha);
-}
-
-function formatFecha(fecha: string | number[]): string {
-  const d = parseFecha(fecha);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-const NIVEL_META: Record<string, { icon: React.ComponentType<any>; bg: string; text: string; border: string }> = {
+// FIX #3: tipado correcto del campo icon usando LucideProps en lugar de any.
+// Todos los iconos de lucide-react implementan esta interfaz.
+const NIVEL_META: Record<string, { icon: React.ComponentType<LucideProps>; bg: string; text: string; border: string }> = {
   INFO:  { icon: Info,          bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-200"  },
   WARN:  { icon: AlertTriangle, bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
   ERROR: { icon: XCircle,       bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200"   },
@@ -37,25 +22,8 @@ const NIVEL_META: Record<string, { icon: React.ComponentType<any>; bg: string; t
 const defaultMeta = { icon: Info, bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200" };
 
 export function LogsPage() {
-  const [logs, setLogs]           = useState<LogDTO[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const { logs, loading, error, recargar } = useLogs();
   const [nivelFiltro, setNivelFiltro] = useState<string>("TODOS");
-
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<LogDTO[]>("/api/v1/logs");
-      setLogs(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al cargar los logs");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { cargar(); }, [cargar]);
 
   const niveles = ["TODOS", "INFO", "WARN", "ERROR", "DEBUG"];
   const logsFiltrados = nivelFiltro === "TODOS"
@@ -69,27 +37,22 @@ export function LogsPage() {
   }, {});
 
   return (
-    <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="space-y-5">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Waves size={18} className="text-cyan-500" />
-            <h1 className="text-xl font-bold text-slate-800">Logs del Sistema</h1>
-          </div>
-          <p className="text-sm text-slate-500 ml-6.5">
-            {logs.length > 0 ? `${logs.length} registros recientes` : "Actividad y eventos del servidor"}
-          </p>
-        </div>
-        <button
-          onClick={cargar}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Actualizar
-        </button>
-      </div>
+      <PageHeader
+        title="Logs del Sistema"
+        subtitle={logs.length > 0 ? `${logs.length} registros recientes` : "Actividad y eventos del servidor"}
+        actions={
+          <button
+            onClick={recargar}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Actualizar
+          </button>
+        }
+      />
 
       {/* Resumen de conteos */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -183,7 +146,7 @@ export function LogsPage() {
                         {log.modulo}
                       </span>
                       <span className="text-xs text-slate-400 ml-auto" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                        {formatFecha(log.fechaHora)}
+                        {formatFechaConSegundos(log.fechaHora)}
                       </span>
                     </div>
                     <p className="text-sm text-slate-700 leading-relaxed">{log.mensaje}</p>

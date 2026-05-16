@@ -5,19 +5,23 @@ import {
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  type TooltipProps,
 } from "recharts";
+import type { ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import { useNavigate } from "react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { PageStateGuard } from "../components/PageStateGuard";
-import { getDatosGraficos, parseFechaBackend, toLocalISOString, type LecturaDTO } from "../../api/lecturas";
+import { parseFechaBackend, formatHora } from "../../lib/fechas";
+import { type LecturaDTO } from "../../api/lecturas";
+import { useDatosGraficos } from "../hooks/useDatosGraficos";
+import { evaluarParametro, calcularPorcentaje, PARAMETROS_CALIDAD } from "../../domain/calidadAgua";
+import { StatusBadge } from "../components/shared/StatusBadge";
+import { PageHeader } from "../components/shared/PageHeader";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
-function formatHora(fecha: string | number[]): string {
-  const d = parseFechaBackend(fecha);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
+// formatHora centralizado en lib/fechas
 
 function tendencia(data: LecturaDTO[], key: keyof LecturaDTO): "up" | "down" | "stable" {
   if (data.length < 2) return "stable";
@@ -36,29 +40,30 @@ function TrendBadge({ trend }: { trend: string }) {
   return <span className="flex items-center gap-0.5 text-xs font-medium text-slate-400"><Minus size={12} /> Estable</span>;
 }
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === "warning")
-    return <span className="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Aviso</span>;
-  return <span className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Normal</span>;
-}
+// StatusBadge importado desde components/shared/StatusBadge.tsx
 
-const MiniTooltip = ({ active, payload, label, unit }: any) => {
+// FIX #4: tipado correcto del tooltip de Recharts — eliminado `any`.
+// TooltipProps<ValueType, NameType> cubre active, payload y label.
+// La prop extra `unit` se añade con una intersección de tipos.
+const MiniTooltip = ({
+  active, payload, label, unit,
+}: TooltipProps<ValueType, NameType> & { unit?: string }) => {
   if (active && payload?.length)
     return <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-2.5 py-1.5"><p className="text-xs text-slate-400">{label}</p><p className="text-xs font-bold" style={{ color: payload[0].color }}>{payload[0].value} {unit}</p></div>;
   return null;
 };
 
 const sensorMeta = [
-  { key: "ph"          as const, label: "pH",          unit: "",    icon: Droplets,     color: "text-cyan-600",   bg: "bg-cyan-50",   border: "border-cyan-100",   bar: "bg-cyan-500",   rangeMin: 6.5, rangeMax: 8.5 },
-  { key: "temperatura" as const, label: "Temperatura", unit: "°C",  icon: Thermometer,  color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100", bar: "bg-orange-500", rangeMin: 15,  rangeMax: 30  },
-  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", icon: Eye,          color: "text-amber-600",  bg: "bg-amber-50",  border: "border-amber-100",  bar: "bg-amber-500",  rangeMin: 0,   rangeMax: 4   },
-  { key: "tds"         as const, label: "TDS",         unit: "ppm", icon: Zap,          color: "text-emerald-600",bg: "bg-emerald-50",border: "border-emerald-100",bar: "bg-emerald-500",rangeMin: 0,   rangeMax: 500 },
+  { key: "ph"          as const, label: "pH",          unit: "",    icon: Droplets,     color: "text-cyan-600",   bg: "bg-cyan-50",   border: "border-cyan-100",   bar: "bg-cyan-500",   rangeMin: PARAMETROS_CALIDAD.ph.normalMin,          rangeMax: PARAMETROS_CALIDAD.ph.normalMax          },
+  { key: "temperatura" as const, label: "Temperatura", unit: "°C",  icon: Thermometer,  color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100", bar: "bg-orange-500", rangeMin: PARAMETROS_CALIDAD.temperatura.normalMin,  rangeMax: PARAMETROS_CALIDAD.temperatura.normalMax  },
+  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", icon: Eye,          color: "text-amber-600",  bg: "bg-amber-50",  border: "border-amber-100",  bar: "bg-amber-500",  rangeMin: PARAMETROS_CALIDAD.turbidez.normalMin,     rangeMax: PARAMETROS_CALIDAD.turbidez.normalMax     },
+  { key: "tds"         as const, label: "TDS",         unit: "ppm", icon: Zap,          color: "text-emerald-600",bg: "bg-emerald-50",border: "border-emerald-100",bar: "bg-emerald-500",rangeMin: PARAMETROS_CALIDAD.tds.normalMin,          rangeMax: PARAMETROS_CALIDAD.tds.normalMax          },
 ];
 
 const miniCharts = [
   { key: "ph"          as const, label: "pH",          unit: "",    color: "#06b6d4", domain: [6.4, 7.6]  as [number,number], refLine: undefined as number|undefined },
   { key: "temperatura" as const, label: "Temperatura", unit: "°C",  color: "#f97316", domain: [15,  35]   as [number,number], refLine: undefined as number|undefined },
-  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", color: "#a855f7", domain: [0,   5]    as [number,number], refLine: 4.0 },
+  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", color: "#a855f7", domain: [0,   5]    as [number,number], refLine: PARAMETROS_CALIDAD.turbidez.normalMax },
   { key: "tds"         as const, label: "TDS",         unit: "ppm", color: "#10b981", domain: [0,   600]  as [number,number], refLine: undefined as number|undefined },
 ];
 
@@ -72,8 +77,7 @@ export function DashboardPage() {
     generarNuevoAnalisis, lecturaConImagen, cambiarNodoActivo,
   } = useAnalysis();
 
-  const [chartData, setChartData] = useState<LecturaDTO[]>([]);
-  const [loadingChart, setLoadingChart] = useState(false);
+  const { chartData, loadingChart, recargar: cargarGraficos } = useDatosGraficos(idNodoActivo);
   const [ahora, setAhora] = useState(new Date());
 
   useEffect(() => {
@@ -81,31 +85,13 @@ export function DashboardPage() {
     return () => clearInterval(t);
   }, []);
 
-  const cargarGraficos = useCallback(async () => {
-    if (!idNodoActivo) return;
-    setLoadingChart(true);
-    try {
-      const fin    = new Date();
-      const inicio = new Date(fin.getTime() - 2 * 60 * 60 * 1000);
-      const data = await getDatosGraficos(idNodoActivo, toLocalISOString(inicio), toLocalISOString(fin));
-      setChartData(data);
-    } catch { /* silencioso */ }
-    finally { setLoadingChart(false); }
-  }, [idNodoActivo]);
-
-  useEffect(() => {
-    cargarGraficos();
-    const t = setInterval(cargarGraficos, 30_000);
-    return () => clearInterval(t);
-  }, [cargarGraficos]);
-
   const lec = chartData[chartData.length - 1] ?? ultimaLectura;
 
   const segsDesde = lec
     ? Math.floor((Date.now() - parseFechaBackend(lec.fechaHora).getTime()) / 1000)
     : null;
 
-  const turbWarning = lec && lec.turbidez > 3.5;
+  const turbWarning = lec && evaluarParametro("turbidez", lec.turbidez) !== "normal";
 
   const handleGenerateAnalysis = async () => {
     await generarNuevoAnalisis();
@@ -125,7 +111,7 @@ export function DashboardPage() {
   const nodoActual = nodos.find((n) => n.idNodo === idNodoActivo);
 
   return (
-    <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="space-y-5">
 
       {/* Modal generación */}
       {isGenerating && (
@@ -167,17 +153,10 @@ export function DashboardPage() {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Waves size={18} className="text-cyan-500" />
-            <h1 className="text-xl font-bold text-slate-800">Panel de Control</h1>
-          </div>
-          <p className="text-sm text-slate-500 ml-6.5">
-            Monitoreo en tiempo real{segsDesde !== null && ` · Última lectura hace ${segsDesde}s`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeader
+        title="Panel de Control"
+        subtitle={`Monitoreo en tiempo real${segsDesde !== null ? ` · Última lectura hace ${segsDesde}s` : ""}`}
+        actions={<>
 
           {/* Selector de nodo — visible solo si hay más de uno */}
           {nodos.length > 1 && (
@@ -208,8 +187,8 @@ export function DashboardPage() {
               {String(ahora.getHours()).padStart(2,"0")}:{String(ahora.getMinutes()).padStart(2,"0")}:{String(ahora.getSeconds()).padStart(2,"0")}
             </span>
           </div>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Alert banner — turbidez */}
       {turbWarning && (
@@ -220,7 +199,7 @@ export function DashboardPage() {
           <div>
             <p className="text-sm font-semibold text-amber-800">Aviso de calidad detectado</p>
             <p className="text-xs text-amber-700 mt-0.5">
-              La turbidez ({lec!.turbidez} NTU) está aproximándose al límite máximo recomendado de 4 NTU. Se sugiere revisar el sistema de filtración.
+              La turbidez ({lec!.turbidez} NTU) está aproximándose al límite máximo recomendado de {PARAMETROS_CALIDAD.turbidez.normalMax} NTU. Se sugiere revisar el sistema de filtración.
             </p>
           </div>
           <button onClick={() => navigate("/analisis-ia")} className="ml-auto text-xs font-medium text-amber-600 hover:text-amber-800 flex items-center gap-1 flex-shrink-0">
@@ -243,9 +222,9 @@ export function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {sensorMeta.map((sensor) => {
           const val = lec ? (lec[sensor.key] as number) : null;
-          const pct = val !== null ? Math.min(100, Math.max(0, ((val - sensor.rangeMin) / (sensor.rangeMax - sensor.rangeMin)) * 100)) : 0;
+          const pct = val !== null ? calcularPorcentaje(sensor.key, val) : 0;
           const trend = chartData.length > 1 ? tendencia(chartData, sensor.key) : "stable";
-          const isWarning = sensor.key === "turbidez" && val !== null && val > 3.5;
+          const isWarning = val !== null && evaluarParametro(sensor.key, val) !== "normal";
           return (
             <div key={sensor.key} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">

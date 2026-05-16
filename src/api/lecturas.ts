@@ -58,6 +58,3 @@ export function getDatosGraficos(idNodo: number, inicio: string, fin: string): P
   return apiFetch<LecturaDTO[]>(`/api/v1/lecturas/nodo/${idNodo}/graficos?${params}`);
 }
 
-export function getHistorialCompleto(idNodo: number): Promise<LecturaDTO[]> {
-  return apiFetch<LecturaDTO[]>(`/api/v1/lecturas/nodo/${idNodo}/historial-completo`);
-}

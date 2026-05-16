@@ -1,55 +1,32 @@
+import { useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  type TooltipProps,
 } from "recharts";
+import type { ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import {
   Download, Filter, Droplets, Thermometer, Eye, Zap,
   ChevronLeft, ChevronRight, Waves, TrendingUp, Calendar, Loader2, AlertTriangle,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+// FIX #3: una sola llamada a useAnalysis extrayendo todo lo necesario de una vez.
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { PageStateGuard } from "../components/PageStateGuard";
-import {
-  getHistorialPaginado, getDatosGraficos,
-  parseFechaBackend, toLocalISOString,
-  type LecturaDTO, type PageResponse,
-} from "../../api/lecturas";
+import { type LecturaDTO, type PageResponse } from "../../api/lecturas";
+import { formatFechaTabla, formatHora as formatHoraGraf, isoToday, isoNDaysAgo } from "../../lib/fechas";
+import { useHistorial, type FilterMode } from "../hooks/useHistorial";
+// Umbrales centralizados en el dominio — eliminadas las 4 funciones *Level locales.
+import { evaluarParametro, evaluarLectura, PARAMETROS_CALIDAD } from "../../domain/calidadAgua";
+import { StatusBadge } from "../components/shared/StatusBadge";
+import { PageHeader } from "../components/shared/PageHeader";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
-// FIX #2: usa parseFechaBackend
-function formatFechaTabla(fecha: string | number[]): string {
-  const d = parseFechaBackend(fecha);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function formatHoraGraf(fecha: string | number[]): string {
-  const d = parseFechaBackend(fecha);
-  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-}
-
-function isoToday(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
-function isoNDaysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n + 1);
-  return d.toISOString().split("T")[0];
-}
+// Formatters de fecha centralizados en lib/fechas
 
 // ─── levels ───────────────────────────────────────────────────────────────
 
-function phLevel(v: number)   { return v >= 6.5 && v <= 8.5 ? "normal" : (v >= 6 && v < 6.5)||(v > 8.5 && v <= 9) ? "warning" : "critical"; }
-function tempLevel(v: number) { return v >= 15 && v <= 30 ? "normal" : (v >= 12 && v < 15)||(v > 30 && v <= 33) ? "warning" : "critical"; }
-function turbLevel(v: number) { return v <= 4 ? "normal" : v <= 6 ? "warning" : "critical"; }
-function tdsLevel(v: number)  { return v <= 500 ? "normal" : v <= 600 ? "warning" : "critical"; }
-function getOverallStatus(l: LecturaDTO) {
-  const levels = [phLevel(l.ph), tempLevel(l.temperatura), turbLevel(l.turbidez), tdsLevel(l.tds)];
-  if (levels.includes("critical")) return "Crítico";
-  if (levels.includes("warning"))  return "Aviso";
-  return "Normal";
-}
+// Funciones phLevel/tempLevel/turbLevel/tdsLevel/getOverallStatus eliminadas.
+// Reemplazadas por evaluarParametro y evaluarLectura del dominio.
 
 function ValueCell({ value, level, unit }: { value: number; level: string; unit?: string }) {
   const s: Record<string,string> = {
@@ -65,92 +42,62 @@ function ValueCell({ value, level, unit }: { value: number; level: string; unit?
   );
 }
 
-const CustomTooltip = ({ active, payload, label, unit }: any) => {
+// FIX #4: tipado correcto del tooltip de Recharts — eliminado `any`.
+const CustomTooltip = ({
+  active, payload, label, unit,
+}: TooltipProps<ValueType, NameType> & { unit?: string }) => {
   if (active && payload?.length)
     return <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2"><p className="text-xs font-semibold text-slate-500 mb-1">{label}</p><p className="text-sm font-bold" style={{ color: payload[0].color }}>{payload[0].value} {unit}</p></div>;
   return null;
 };
 
 const chartConfigs = [
-  { key: "ph"          as const, label: "pH",          unit: "",    icon: Droplets,    color: "#06b6d4", fill: "#e0f9ff", refLine: 7.0,  refLabel: "Neutro",      min: 6.5, max: 8.5 },
-  { key: "temperatura" as const, label: "Temperatura", unit: "°C",  icon: Thermometer, color: "#f97316", fill: "#fff7ed", refLine: undefined, refLabel: undefined, min: 15,  max: 35  },
-  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", icon: Eye,         color: "#a855f7", fill: "#faf5ff", refLine: 4.0,  refLabel: "Límite máx.", min: 0,   max: 5   },
-  { key: "tds"         as const, label: "TDS",         unit: "ppm", icon: Zap,         color: "#10b981", fill: "#ecfdf5", refLine: 500,  refLabel: "Límite",      min: 0,   max: 600 },
+  { key: "ph"          as const, label: "pH",          unit: "",    icon: Droplets,    color: "#06b6d4", fill: "#e0f9ff", refLine: 7.0,                                          refLabel: "Neutro",      min: PARAMETROS_CALIDAD.ph.normalMin,          max: PARAMETROS_CALIDAD.ph.normalMax          },
+  { key: "temperatura" as const, label: "Temperatura", unit: "°C",  icon: Thermometer, color: "#f97316", fill: "#fff7ed", refLine: undefined as number | undefined,               refLabel: undefined,     min: PARAMETROS_CALIDAD.temperatura.normalMin,  max: 35                                       },
+  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", icon: Eye,         color: "#a855f7", fill: "#faf5ff", refLine: PARAMETROS_CALIDAD.turbidez.normalMax,         refLabel: "Límite máx.", min: PARAMETROS_CALIDAD.turbidez.normalMin,     max: 5                                        },
+  { key: "tds"         as const, label: "TDS",         unit: "ppm", icon: Zap,         color: "#10b981", fill: "#ecfdf5", refLine: PARAMETROS_CALIDAD.tds.normalMax,              refLabel: "Límite",      min: PARAMETROS_CALIDAD.tds.normalMin,          max: 600                                      },
 ];
+
+// ─── Paginación centrada en la página actual (FIX #7) ─────────────────────
+// Muestra hasta 5 páginas centradas en `page`, más el primer/último botón
+// si quedan fuera del rango. Ejemplo con 20 páginas, en página 10:
+//   1 ... 8 9 [10] 11 12 ... 20
+function buildPageNumbers(page: number, totalPages: number): (number | "...")[] {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i);
+
+  const WINDOW = 2; // páginas a cada lado de la actual
+  const start  = Math.max(1, page - WINDOW);
+  const end    = Math.min(totalPages - 2, page + WINDOW);
+
+  const pages: (number | "...")[] = [0];
+
+  if (start > 1) pages.push("...");
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (end < totalPages - 2) pages.push("...");
+
+  pages.push(totalPages - 1);
+  return pages;
+}
 
 // ─── main ─────────────────────────────────────────────────────────────────
 
 export function HistorialPage() {
-  const { idNodoActivo, nodos, loadingInit, cambiarNodoActivo } = useAnalysis();
+  // FIX #3: única llamada a useAnalysis — extraemos todo lo que necesitamos.
+  const { idNodoActivo, nodos, loadingInit, errorInit, cambiarNodoActivo } = useAnalysis();
 
-  const [filterMode, setFilterMode]               = useState("Hoy");
-  const [fromDate, setFromDate]                   = useState(isoToday());
-  const [toDate, setToDate]                       = useState(isoToday());
-  const [customDatesEnabled, setCustomDatesEnabled] = useState(false);
-  const [activeParams, setActiveParams]           = useState(["ph","temperatura","turbidez","tds"]);
-  const [page, setPage]                           = useState(0); // 0-indexed
+  const {
+    pageData, grafData, loadingTable, loadingChart, errorData,
+    filterMode, fromDate, toDate, customDatesEnabled, page,
+    setPage, setFromDate, setToDate,
+    cambiarFiltroMode, aplicarFiltroPersonalizado, exportarCSV, recargar,
+  } = useHistorial(idNodoActivo, loadingInit);
 
-  const [pageData, setPageData]   = useState<PageResponse<LecturaDTO> | null>(null);
-  const [loadingTable, setLoadingTable] = useState(false);
-  const [grafData, setGrafData]   = useState<LecturaDTO[]>([]);
-  const [loadingChart, setLoadingChart] = useState(false);
-  const [errorData, setErrorData] = useState<string | null>(null);
-
-  // FIX #3: construir fechas correctas para el backend (sin Z, sin ms)
-  const getRange = useCallback((): [string, string] => {
-    if (filterMode === "Personalizado") {
-      return [
-        toLocalISOString(new Date(`${fromDate}T00:00:00`)),
-        toLocalISOString(new Date(`${toDate}T23:59:59`)),
-      ];
-    }
-    const days = filterMode === "7 días" ? 7 : filterMode === "30 días" ? 30 : 1;
-    const fin    = new Date();
-    const inicio = new Date();
-    inicio.setDate(inicio.getDate() - (days - 1));
-    inicio.setHours(0, 0, 0, 0);
-    return [toLocalISOString(inicio), toLocalISOString(fin)];
-  }, [filterMode, fromDate, toDate]);
-
-  const cargarTabla = useCallback(async () => {
-    if (!idNodoActivo || loadingInit) return;
-    setLoadingTable(true);
-    setErrorData(null);
-    try {
-      const [inicio, fin] = getRange();
-      const data = await getHistorialPaginado(idNodoActivo, inicio, fin, page, 8);
-      setPageData(data);
-    } catch (err: unknown) {
-      setErrorData(err instanceof Error ? err.message : String(err));
-    } finally { setLoadingTable(false); }
-  }, [idNodoActivo, loadingInit, page, getRange]);
-
-  const cargarGraficos = useCallback(async () => {
-    if (!idNodoActivo || loadingInit) return;
-    setLoadingChart(true);
-    try {
-      const [inicio, fin] = getRange();
-      const data = await getDatosGraficos(idNodoActivo, inicio, fin);
-      setGrafData(data);
-    } catch { /* silencioso */ }
-    finally { setLoadingChart(false); }
-  }, [idNodoActivo, loadingInit, getRange]);
-
-  useEffect(() => { cargarTabla(); cargarGraficos(); }, [cargarTabla, cargarGraficos]);
-  useEffect(() => { setPage(0); }, [filterMode, fromDate, toDate]);
-
-  const handleFilterModeChange = (mode: string) => {
-    setFilterMode(mode);
-    setCustomDatesEnabled(mode === "Personalizado");
-    if (mode === "7 días")  { setFromDate(isoNDaysAgo(7));  setToDate(isoToday()); }
-    if (mode === "30 días") { setFromDate(isoNDaysAgo(30)); setToDate(isoToday()); }
-    if (mode === "Hoy")     { setFromDate(isoToday());       setToDate(isoToday()); }
-  };
-
+  // Estado local de UI — qué parámetros muestra el gráfico (no pertenece al hook)
+  const [activeParams, setActiveParams] = useState(["ph", "temperatura", "turbidez", "tds"]);
   const toggleParam = (key: string) =>
     setActiveParams((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
 
-  // FIX #2: usar parseFechaBackend en grafData
+  // Derivaciones de grafData — se calculan en la página porque dependen del renderizado
   const grafDataFormatted = grafData.map((d) => ({ ...d, fecha: formatHoraGraf(d.fechaHora) }));
 
   const statsFor = (key: keyof LecturaDTO) => {
@@ -159,70 +106,28 @@ export function HistorialPage() {
     return {
       min: Math.min(...vals).toFixed(2),
       max: Math.max(...vals).toFixed(2),
-      avg: (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(2),
+      avg: (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2),
     };
   };
 
-  // Exportar todos los datos del período actual como CSV
-  const handleExportCSV = useCallback(async () => {
-    if (!idNodoActivo) return;
-    try {
-      const [inicio, fin] = getRange();
-      // Obtener hasta 1000 registros para el CSV (páginas completas)
-      const data = await getDatosGraficos(idNodoActivo, inicio, fin);
-      if (!data.length) return;
-
-      const headers = ["ID Lectura", "Fecha / Hora", "pH", "Temperatura (°C)", "Turbidez (NTU)", "TDS (ppm)", "Estado"];
-      const rows = data.map((r) => [
-        r.idLectura,
-        formatFechaTabla(r.fechaHora),
-        r.ph,
-        r.temperatura,
-        r.turbidez,
-        r.tds,
-        getOverallStatus(r),
-      ]);
-
-      const csvContent = [headers, ...rows]
-        .map((row) => row.map((v) => `"${v}"`).join(","))
-        .join("\n");
-
-      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-      const url  = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href     = url;
-      link.download = `historial_nodo${idNodoActivo}_${fromDate}_${toDate}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch { /* silencioso */ }
-  }, [idNodoActivo, getRange, fromDate, toDate]);
-
-  // FIX #1: usar pageNumber (no number) y totalElements real del backend
   const totalPages    = pageData?.totalPages ?? 1;
   const totalElements = pageData?.totalElements ?? 0;
   const rows          = pageData?.content ?? [];
 
-  // Esperar a que el Context termine de cargar antes de renderizar
-  const { errorInit } = useAnalysis();
   const guardEl = <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Cargando historial..." />;
   if (loadingInit || errorInit) return guardEl;
 
+  // FIX #7: números de página centrados en la página actual
+  const pageNumbers = buildPageNumbers(page, totalPages);
+
   return (
-    <div className="space-y-5" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="space-y-5">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Waves size={18} className="text-cyan-500" />
-            <h1 className="text-xl font-bold text-slate-800">Historial de Datos</h1>
-          </div>
-          <p className="text-sm text-slate-500 ml-6.5">
-            {totalElements > 0 ? `${totalElements} registros encontrados` : "Evolución histórica de parámetros"}
-          </p>
-        </div>
+      <PageHeader
+        title="Historial de Datos"
+        subtitle={totalElements > 0 ? `${totalElements} registros encontrados` : "Evolución histórica de parámetros"}
+        actions={<>
         {nodos.length > 1 && (
           <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1.5 shadow-sm">
             <select
@@ -231,22 +136,21 @@ export function HistorialPage() {
               className="text-xs text-slate-700 font-medium bg-transparent border-none outline-none cursor-pointer"
             >
               {nodos.map((n) => (
-                <option key={n.idNodo} value={n.idNodo}>
-                  {n.ubicacion}
-                </option>
+                <option key={n.idNodo} value={n.idNodo}>{n.ubicacion}</option>
               ))}
             </select>
           </div>
         )}
         <button
-          onClick={handleExportCSV}
+          onClick={exportarCSV}
           disabled={!idNodoActivo || totalElements === 0}
           className="flex items-center gap-1.5 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           title={totalElements === 0 ? "No hay datos para exportar" : "Descargar CSV"}
         >
           <Download size={13} /> Exportar CSV
         </button>
-      </div>
+        </>}
+      />
 
       {/* Filter bar */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
@@ -257,7 +161,7 @@ export function HistorialPage() {
           </div>
           <div className="flex items-center gap-1.5 ml-1">
             {["Hoy","7 días","30 días","Personalizado"].map((opt) => (
-              <button key={opt} onClick={() => handleFilterModeChange(opt)}
+              <button key={opt} onClick={() => cambiarFiltroMode(opt as FilterMode)}
                 className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors border ${filterMode === opt ? "bg-cyan-500 text-white border-cyan-500 shadow-sm" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}>
                 {opt}
               </button>
@@ -274,7 +178,7 @@ export function HistorialPage() {
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
               disabled={!customDatesEnabled} className="text-xs text-slate-700 bg-transparent border-none outline-none disabled:cursor-not-allowed" />
           </div>
-          <button onClick={() => { cargarTabla(); cargarGraficos(); }} disabled={!customDatesEnabled}
+          <button onClick={aplicarFiltroPersonalizado} disabled={!customDatesEnabled}
             className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
             <Filter size={12} /> Aplicar
           </button>
@@ -380,23 +284,16 @@ export function HistorialPage() {
               ) : rows.length === 0 ? (
                 <tr><td colSpan={6} className="py-10 text-center text-xs text-slate-400">No hay registros en el período seleccionado</td></tr>
               ) : rows.map((row) => {
-                const status = getOverallStatus(row);
+                const nivel = evaluarLectura(row);
                 return (
                   <tr key={row.idLectura} className="hover:bg-slate-50 transition-colors">
-                    {/* FIX #2 */}
                     <td className="px-4 py-3 text-xs text-slate-600" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatFechaTabla(row.fechaHora)}</td>
-                    <td className="px-4 py-3"><ValueCell value={row.ph}          level={phLevel(row.ph)}           /></td>
-                    <td className="px-4 py-3"><ValueCell value={row.temperatura} level={tempLevel(row.temperatura)} unit="°C"  /></td>
-                    <td className="px-4 py-3"><ValueCell value={row.turbidez}    level={turbLevel(row.turbidez)}   unit="NTU" /></td>
-                    <td className="px-4 py-3"><ValueCell value={row.tds}         level={tdsLevel(row.tds)}         unit="ppm" /></td>
+                    <td className="px-4 py-3"><ValueCell value={row.ph}          level={evaluarParametro("ph",          row.ph)}          /></td>
+                    <td className="px-4 py-3"><ValueCell value={row.temperatura} level={evaluarParametro("temperatura", row.temperatura)} unit="°C"  /></td>
+                    <td className="px-4 py-3"><ValueCell value={row.turbidez}    level={evaluarParametro("turbidez",    row.turbidez)}    unit="NTU" /></td>
+                    <td className="px-4 py-3"><ValueCell value={row.tds}         level={evaluarParametro("tds",         row.tds)}         unit="ppm" /></td>
                     <td className="px-4 py-3">
-                      {status === "Crítico" ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 border border-red-200 rounded-full px-2.5 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> Crítico</span>
-                      ) : status === "Aviso" ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2.5 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Aviso</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Normal</span>
-                      )}
+                      <StatusBadge status={nivel} />
                     </td>
                   </tr>
                 );
@@ -405,7 +302,7 @@ export function HistorialPage() {
           </table>
         </div>
 
-        {/* FIX #1: paginación con pageNumber correcto */}
+        {/* FIX #7: paginación centrada en la página actual */}
         <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
           <span className="text-xs text-slate-500">Página {page + 1} de {totalPages}</span>
           <div className="flex items-center gap-1">
@@ -413,21 +310,18 @@ export function HistorialPage() {
               className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronLeft size={13} />
             </button>
-            {[...Array(Math.min(5, totalPages))].map((_, i) => (
-              <button key={i} onClick={() => setPage(i)}
-                className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-medium transition-colors ${page === i ? "bg-cyan-500 text-white border border-cyan-500" : "border border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
-                {i + 1}
-              </button>
-            ))}
-            {totalPages > 5 && (
-              <>
-                <span className="text-slate-400 text-xs px-1">...</span>
-                <button onClick={() => setPage(totalPages - 1)}
-                  className={`w-7 h-7 flex items-center justify-center rounded-lg border text-xs font-medium transition-colors ${page === totalPages - 1 ? "bg-cyan-500 text-white border-cyan-500" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
-                  {totalPages}
+
+            {pageNumbers.map((p, i) =>
+              p === "..." ? (
+                <span key={`ellipsis-${i}`} className="text-slate-400 text-xs px-1">...</span>
+              ) : (
+                <button key={p} onClick={() => setPage(p as number)}
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-medium transition-colors ${page === p ? "bg-cyan-500 text-white border border-cyan-500" : "border border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+                  {(p as number) + 1}
                 </button>
-              </>
+              )
             )}
+
             <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
               className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronRight size={13} />

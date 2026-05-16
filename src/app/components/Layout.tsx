@@ -5,6 +5,7 @@ import {
   BrainCircuit,
   Droplets,
   Wifi,
+  WifiOff,
   Menu,
   X,
   Clock,
@@ -17,28 +18,35 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
+// FIX B: importar useAnalysis para leer el estado real del nodo activo.
+// El badge "ESP32 Conectado" ahora refleja estadoConexion del nodo seleccionado
+// en lugar de estar hardcodeado como siempre verde.
+import { useAnalysis } from "../contexts/AnalysisContext";
 
 const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, description: "Tiempo real", roles: null },
-  { to: "/historial", label: "Historial", icon: LineChart, description: "Datos históricos", roles: null },
-  { to: "/analisis-ia", label: "Análisis IA", icon: BrainCircuit, description: "Interpretación", roles: null },
-  { to: "/usuarios", label: "Usuarios",  icon: Users,       description: "Gestión de acceso", roles: ["ADMINISTRADOR"]           },
-  { to: "/logs",     label: "Logs",      icon: ScrollText,  description: "Eventos del servidor",  roles: ["ADMINISTRADOR", "SOPORTE"] },
-  { to: "/nodos",    label: "Nodos",     icon: Cpu,         description: "Dispositivos ESP32",    roles: ["ADMINISTRADOR", "SOPORTE", "GESTIONADOR"] },
+  { to: "/",           label: "Dashboard",  icon: LayoutDashboard, description: "Tiempo real",          roles: null },
+  { to: "/historial",  label: "Historial",  icon: LineChart,        description: "Datos históricos",     roles: null },
+  { to: "/analisis-ia",label: "Análisis IA",icon: BrainCircuit,     description: "Interpretación",       roles: null },
+  { to: "/usuarios",   label: "Usuarios",   icon: Users,            description: "Gestión de acceso",    roles: ["ADMINISTRADOR"]                           },
+  { to: "/logs",       label: "Logs",       icon: ScrollText,       description: "Eventos del servidor", roles: ["ADMINISTRADOR", "SOPORTE"]                },
+  { to: "/nodos",      label: "Nodos",      icon: Cpu,              description: "Dispositivos ESP32",   roles: ["ADMINISTRADOR", "SOPORTE", "GESTIONADOR"] },
 ] as const;
 
-const systemStatus = [
-  { label: "ESP32", status: "online" },
-  { label: "Base de Datos", status: "online" },
-  { label: "Servidor API", status: "online" },
-  { label: "Servicio IA", status: "warning" },
-];
+// FIX B: eliminado el array `systemStatus` hardcodeado — nunca se usaba en el JSX
+// y todos sus valores eran estáticos ("online"/"warning" fijos).
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [time, setTime] = useState(new Date());
+  const [time, setTime]               = useState(new Date());
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
   const { user, logout, isAdmin, isSoporte } = useAuth();
+
+  // FIX B: leer nodos e idNodoActivo del contexto para saber el estado real.
+  const { nodos, idNodoActivo } = useAnalysis();
+  const nodoActual = nodos.find((n) => n.idNodo === idNodoActivo);
+  const esp32Conectado = nodoActual?.estadoConexion ?? false;
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,7 +54,7 @@ export function Layout() {
     return () => clearInterval(timer);
   }, []);
 
-  // Close user menu on outside click
+  // Cerrar menú de usuario al hacer click fuera
   useEffect(() => {
     if (!userMenuOpen) return;
     const handle = (e: MouseEvent) => {
@@ -74,7 +82,7 @@ export function Layout() {
   });
 
   return (
-    <div className="min-h-screen bg-[#f0f6ff] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="min-h-screen bg-[#f0f6ff] flex flex-col">
       {/* Top header */}
       <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
@@ -96,17 +104,37 @@ export function Layout() {
           </div>
         </div>
 
-        {/* Center — connection status */}
-        <div className="hidden md:flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <Wifi size={12} className="text-emerald-600" />
-          <span className="text-xs font-medium text-emerald-700">ESP32 Conectado</span>
+        {/* Center — estado real del ESP32 activo (FIX B) */}
+        <div className={`hidden md:flex items-center gap-2 rounded-full px-3 py-1.5 border ${
+          esp32Conectado
+            ? "bg-emerald-50 border-emerald-200"
+            : "bg-slate-50 border-slate-200"
+        }`}>
+          {esp32Conectado ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <Wifi size={12} className="text-emerald-600" />
+              <span className="text-xs font-medium text-emerald-700">
+                ESP32 Conectado{nodoActual ? ` · ${nodoActual.ubicacion}` : ""}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
+              </span>
+              <WifiOff size={12} className="text-slate-400" />
+              <span className="text-xs font-medium text-slate-500">
+                {nodos.length === 0 ? "Sin nodos" : "ESP32 Desconectado"}
+              </span>
+            </>
+          )}
         </div>
 
-        {/* Right — clock + user menu */}
+        {/* Right — reloj + menú de usuario */}
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex flex-col items-end">
             <div className="flex items-center gap-1.5">
@@ -121,6 +149,7 @@ export function Layout() {
             <Activity size={11} className="text-cyan-600" />
             <span className="text-xs font-medium text-cyan-700">En línea</span>
           </div>
+
           {/* User dropdown */}
           <div className="relative" data-user-menu>
             <button
@@ -167,12 +196,10 @@ export function Layout() {
           `}
           style={{ minHeight: "calc(100vh - 57px)" }}
         >
-          {/* Nav label */}
           <div className="px-4 pt-5 pb-2">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Módulos</p>
           </div>
 
-          {/* Navigation */}
           <nav className="flex flex-col gap-1 px-3 flex-1">
             {visibleNavItems.map(({ to, label, icon: Icon, description }) => (
               <NavLink
@@ -208,13 +235,12 @@ export function Layout() {
             ))}
           </nav>
 
-          {/* Version */}
           <div className="px-4 pb-5 mt-auto">
             <p className="text-xs text-slate-600 text-center">AquaMonitor v2.1.0</p>
           </div>
         </aside>
 
-        {/* Overlay */}
+        {/* Overlay móvil */}
         {sidebarOpen && (
           <div
             className="fixed inset-0 bg-black/40 z-30 md:hidden backdrop-blur-sm"
@@ -222,7 +248,7 @@ export function Layout() {
           />
         )}
 
-        {/* Main content */}
+        {/* Contenido principal */}
         <main className="flex-1 p-4 md:p-6 overflow-auto">
           <Outlet />
         </main>

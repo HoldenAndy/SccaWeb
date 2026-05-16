@@ -43,8 +43,6 @@ interface AnalysisContextType {
   loadingInit: boolean;
   errorInit: string | null;
   lecturaConImagen: boolean;
-  setIsGenerating: (v: boolean) => void;
-  addAnalysis: (a: AnalisisEnriquecido) => void;
   generarNuevoAnalisis: () => Promise<void>;
   recargarAnalisis: () => Promise<void>;
   cambiarNodoActivo: (idNodo: number) => void;
@@ -254,15 +252,11 @@ export function AnalysisProvider({ children, token }: AnalysisProviderProps) {
     }
   }, [ultimaLectura, lecturaMap]);
 
-  const addAnalysis = useCallback((a: AnalisisEnriquecido) => {
-    setAnalyses((prev) => [a, ...prev]);
-  }, []);
-
   return (
     <AnalysisContext.Provider value={{
       analyses, ultimaLectura, idNodoActivo, nodos,
       isGenerating, loadingInit, errorInit, lecturaConImagen,
-      setIsGenerating, addAnalysis, generarNuevoAnalisis,
+      generarNuevoAnalisis,
       recargarAnalisis: cargarDatos, cambiarNodoActivo,
     }}>
       {children}

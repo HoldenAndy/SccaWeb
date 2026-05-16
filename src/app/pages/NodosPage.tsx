@@ -5,18 +5,20 @@ import {
   Activity, Shield,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import { getNodos, registrarNodo, type NodoDTO } from "../../api/nodos";
+import { registrarNodo } from "../../api/nodos";
+import { useNodos } from "../hooks/useNodos";
+import { PageHeader } from "../components/shared/PageHeader";
+// FIX #4: getUsuarios ya no recibe token como parámetro — usa apiFetch
+// internamente y redirige al login si el token expira (401).
 import { getUsuarios, type UsuarioDTO } from "../../api/auth";
-import { parseFechaBackend } from "../../api/lecturas";
+import { formatFechaTabla } from "../../lib/fechas";
 
+// formatFechaTabla centralizado en lib/fechas
 function formatFecha(fecha: string | null): string {
   if (!fecha) return "Sin lecturas";
-  const d = parseFechaBackend(fecha);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return formatFechaTabla(fecha);
 }
 
-// Valida formato MAC: XX:XX:XX:XX:XX:XX
 function validarMAC(mac: string): boolean {
   return /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(mac);
 }
@@ -27,61 +29,46 @@ interface NodoRegistradoModal {
 }
 
 export function NodosPage() {
-  const { token, isAdmin, isSoporte } = useAuth();
+  // FIX #4: eliminado `token` del destructuring — ya no se necesita aquí.
+  const { isAdmin, isSoporte } = useAuth();
 
   // ── Estados ──────────────────────────────────────────────────────────
-  const [nodos, setNodos]         = useState<NodoDTO[]>([]);
-  const [usuarios, setUsuarios]   = useState<UsuarioDTO[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const { nodos, loading, error, recargar: recargarNodos } = useNodos();
+  const [usuarios, setUsuarios] = useState<UsuarioDTO[]>([]);
 
   // Form
-  const [macAddress, setMacAddress]   = useState("");
-  const [ubicacion, setUbicacion]     = useState("");
-  const [idUsuario, setIdUsuario]     = useState<number | "">("");
-  const [creating, setCreating]       = useState(false);
-  const [formError, setFormError]     = useState<string | null>(null);
+  const [macAddress, setMacAddress] = useState("");
+  const [ubicacion, setUbicacion]   = useState("");
+  const [idUsuario, setIdUsuario]   = useState<number | "">("");
+  const [creating, setCreating]     = useState(false);
+  const [formError, setFormError]   = useState<string | null>(null);
 
   // Modal de confirmación
-  const [registrado, setRegistrado]   = useState<NodoRegistradoModal | null>(null);
+  const [registrado, setRegistrado] = useState<NodoRegistradoModal | null>(null);
 
-  // ── Cargar nodos y usuarios ───────────────────────────────────────────
-  const cargarNodos = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getNodos();
-      setNodos(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al cargar nodos");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // ── Cargar usuarios (para asignar al registrar un nodo) ──────────────
+  // FIX #4: eliminado el parámetro token. getUsuarios usa apiFetch
+  // internamente y maneja el 401 de forma centralizada.
   const cargarUsuarios = useCallback(async () => {
-    if (!token) return;
     try {
-      // Solo cargar CLIENTEs para asignar nodos
-      const data = await getUsuarios(token);
+      const data = await getUsuarios();
       setUsuarios(data.filter((u) => u.rol === "CLIENTE"));
     } catch { /* silencioso — solo afecta al selector */ }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    cargarNodos();
     cargarUsuarios();
-  }, [cargarNodos, cargarUsuarios]);
+  }, [cargarUsuarios]);
 
   // ── Registrar nodo ────────────────────────────────────────────────────
   const handleRegistrar = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    if (!macAddress.trim()) { setFormError("La dirección MAC es obligatoria."); return; }
+    if (!macAddress.trim())           { setFormError("La dirección MAC es obligatoria."); return; }
     if (!validarMAC(macAddress.trim())) { setFormError("Formato de MAC inválido. Ejemplo: A4:CF:12:B0:7E:F1"); return; }
-    if (!ubicacion.trim()) { setFormError("La ubicación es obligatoria."); return; }
-    if (!idUsuario) { setFormError("Debes asignar el nodo a un cliente."); return; }
+    if (!ubicacion.trim())            { setFormError("La ubicación es obligatoria."); return; }
+    if (!idUsuario)                   { setFormError("Debes asignar el nodo a un cliente."); return; }
 
     setCreating(true);
     try {
@@ -90,12 +77,11 @@ export function NodosPage() {
         ubicacion: ubicacion.trim(),
         idUsuario: Number(idUsuario),
       });
-      setNodos((prev) => [...prev, nuevo]);
+      await recargarNodos();
 
       const cliente = usuarios.find((u) => u.idUsuario === Number(idUsuario));
       setRegistrado({ nodo: nuevo, clienteNombre: cliente?.nombre ?? "Cliente" });
 
-      // Limpiar form
       setMacAddress("");
       setUbicacion("");
       setIdUsuario("");
@@ -112,30 +98,27 @@ export function NodosPage() {
   };
 
   // ── Estadísticas rápidas ──────────────────────────────────────────────
-  const nodosActivos    = nodos.filter((n) => n.estadoConexion).length;
-  const nodosInactivos  = nodos.filter((n) => !n.estadoConexion).length;
+  const nodosActivos   = nodos.filter((n) => n.estadoConexion).length;
+  const nodosInactivos = nodos.filter((n) => !n.estadoConexion).length;
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Waves size={18} className="text-cyan-500" />
-            <h1 className="text-xl font-bold text-slate-800">Gestión de Nodos ESP32</h1>
-          </div>
-          <p className="text-sm text-slate-500 ml-6.5">Registra y monitorea los dispositivos de medición</p>
-        </div>
-        <button
-          onClick={cargarNodos}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Actualizar
-        </button>
-      </div>
+      <PageHeader
+        title="Gestión de Nodos ESP32"
+        subtitle="Registra y monitorea los dispositivos de medición"
+        actions={
+          <button
+            onClick={recargarNodos}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Actualizar
+          </button>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
@@ -306,7 +289,6 @@ export function NodosPage() {
                   <div key={nodo.idNodo} className="px-5 py-4 hover:bg-slate-50 transition-colors">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3">
-                        {/* Icono con estado */}
                         <div className={`mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${nodo.estadoConexion ? "bg-emerald-50 border border-emerald-200" : "bg-slate-100 border border-slate-200"}`}>
                           {nodo.estadoConexion
                             ? <Wifi size={15} className="text-emerald-600" />
@@ -314,7 +296,6 @@ export function NodosPage() {
                         </div>
 
                         <div className="min-w-0">
-                          {/* MAC + badge estado */}
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-semibold text-slate-800 font-mono">
                               {nodo.macAddress}
@@ -330,13 +311,11 @@ export function NodosPage() {
                             )}
                           </div>
 
-                          {/* Ubicación */}
                           <div className="flex items-center gap-1 mt-1">
                             <MapPin size={11} className="text-slate-400 flex-shrink-0" />
                             <span className="text-xs text-slate-600">{nodo.ubicacion}</span>
                           </div>
 
-                          {/* Última lectura */}
                           <div className="flex items-center gap-1 mt-0.5">
                             <Clock size={11} className="text-slate-400 flex-shrink-0" />
                             <span className="text-xs text-slate-400">
@@ -346,7 +325,6 @@ export function NodosPage() {
                         </div>
                       </div>
 
-                      {/* ID del nodo */}
                       <div className="flex items-center gap-1.5 bg-slate-100 rounded-lg px-2.5 py-1.5 flex-shrink-0">
                         <Activity size={11} className="text-slate-400" />
                         <span className="text-xs font-mono font-medium text-slate-500">#{nodo.idNodo}</span>
@@ -363,8 +341,7 @@ export function NodosPage() {
       {/* ── Modal de confirmación ─────────────────────────────────────── */}
       {registrado && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" style={{ fontFamily: "'Inter', sans-serif" }}>
-            {/* Header */}
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center">
@@ -380,15 +357,14 @@ export function NodosPage() {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-5 space-y-3">
               <div className="bg-slate-50 border border-slate-200 rounded-xl divide-y divide-slate-100">
                 {[
-                  { label: "ID del nodo",    value: `#${registrado.nodo.idNodo}`,      mono: true },
-                  { label: "MAC Address",    value: registrado.nodo.macAddress,         mono: true },
-                  { label: "Ubicación",      value: registrado.nodo.ubicacion,          mono: false },
-                  { label: "Cliente asignado", value: registrado.clienteNombre,         mono: false },
-                  { label: "Estado inicial", value: "Conectado (esperando lecturas)",   mono: false },
+                  { label: "ID del nodo",     value: `#${registrado.nodo.idNodo}`,    mono: true  },
+                  { label: "MAC Address",     value: registrado.nodo.macAddress,       mono: true  },
+                  { label: "Ubicación",       value: registrado.nodo.ubicacion,        mono: false },
+                  { label: "Cliente asignado",value: registrado.clienteNombre,         mono: false },
+                  { label: "Estado inicial",  value: "Conectado (esperando lecturas)", mono: false },
                 ].map(({ label, value, mono }) => (
                   <div key={label} className="flex items-center justify-between px-3.5 py-2.5">
                     <span className="text-xs text-slate-500">{label}</span>

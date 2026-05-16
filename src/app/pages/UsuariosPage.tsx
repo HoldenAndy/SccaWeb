@@ -1,18 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import {
   Users, UserPlus, Mail, Lock, User, Shield,
   CheckCircle2, Copy, Loader2, AlertCircle, Eye, EyeOff, RefreshCw, X,
 } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext";
-import {
-  getUsuarios, crearUsuario,
-  type UsuarioDTO, type UsuarioRequest, type RolUsuario,
-} from "../../api/auth";
+import { type RolUsuario } from "../../api/auth";
+import { useUsuarios } from "../hooks/useUsuarios";
+// FIX #2: eliminado el import de useAuth — ya no necesitamos el token aquí
+// porque getUsuarios y crearUsuario usan apiFetch internamente.
 
 const ROLES: { value: RolUsuario; label: string; color: string; bg: string }[] = [
-  { value: "ADMINISTRADOR", label: "Administrador", color: "text-red-600",    bg: "bg-red-50 border-red-200"     },
-  { value: "CLIENTE",       label: "Cliente",        color: "text-blue-600",   bg: "bg-blue-50 border-blue-200"   },
-  { value: "SOPORTE",       label: "Soporte",        color: "text-amber-600",  bg: "bg-amber-50 border-amber-200" },
+  { value: "ADMINISTRADOR", label: "Administrador", color: "text-red-600",    bg: "bg-red-50 border-red-200"       },
+  { value: "CLIENTE",       label: "Cliente",        color: "text-blue-600",   bg: "bg-blue-50 border-blue-200"     },
+  { value: "SOPORTE",       label: "Soporte",        color: "text-amber-600",  bg: "bg-amber-50 border-amber-200"   },
   { value: "GESTIONADOR",   label: "Gestionador",    color: "text-violet-600", bg: "bg-violet-50 border-violet-200" },
 ];
 
@@ -26,7 +25,6 @@ function RolBadge({ rol }: { rol: RolUsuario }) {
   );
 }
 
-/** Genera una contraseña temporal segura */
 function generarPasswordTemporal(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
   let pwd = "";
@@ -44,97 +42,54 @@ interface CredencialesModal {
 }
 
 export function UsuariosPage() {
-  const { token } = useAuth();
-
-  /* ─── Estados ────────────────────────────────────────────────────────── */
-  const [usuarios, setUsuarios]   = useState<UsuarioDTO[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  /* ─── Hook de datos ────────────────────────────────────────────────── */
+  const { usuarios, loading, error, creating, formError, recargar, crear, limpiarFormError } = useUsuarios();
 
   // Form
   const [nombre, setNombre]       = useState("");
   const [email, setEmail]         = useState("");
-  const [password, setPassword]   = useState(generarPasswordTemporal());
+  // FIX #8: useState lazy — la función solo se ejecuta una vez en el montaje,
+  // no en cada render del módulo.
+  const [password, setPassword]   = useState(() => generarPasswordTemporal());
   const [rol, setRol]             = useState<RolUsuario>("CLIENTE");
   const [showPwd, setShowPwd]     = useState(false);
-  const [creating, setCreating]   = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
   // Modal de credenciales
-  const [creds, setCreds] = useState<CredencialesModal | null>(null);
+  const [creds, setCreds]   = useState<CredencialesModal | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-
-  /* ─── Cargar usuarios ────────────────────────────────────────────────── */
-  const cargar = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getUsuarios(token);
-      setUsuarios(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al cargar usuarios");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => { cargar(); }, [cargar]);
 
   /* ─── Crear usuario ──────────────────────────────────────────────────── */
   const handleCrear = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError(null);
+    limpiarFormError();
 
-    if (!nombre.trim() || !email.trim() || !password.trim()) {
-      setFormError("Completa todos los campos.");
-      return;
-    }
-    if (password.length < 6) {
-      setFormError("La contraseña temporal debe tener al menos 6 caracteres.");
-      return;
-    }
+    if (!nombre.trim() || !email.trim() || !password.trim()) return;
+    if (password.length < 6) return;
 
-    setCreating(true);
     try {
-      const req: UsuarioRequest = { nombre: nombre.trim(), email: email.trim(), password, rol };
-      const nuevo = await crearUsuario(req, token!);
-      setUsuarios((prev) => [...prev, nuevo]);
-
-      // Mostrar modal con credenciales
+      const nuevo = await crear({ nombre: nombre.trim(), email: email.trim(), password, rol });
       setCreds({ nombre: nuevo.nombre, email: nuevo.email, password, rol: nuevo.rol });
-
-      // Resetear form
       setNombre("");
       setEmail("");
       setPassword(generarPasswordTemporal());
       setRol("CLIENTE");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error al crear usuario";
-      if (msg.toLowerCase().includes("ya está registrado") || msg.includes("409")) {
-        setFormError("Este correo ya está registrado en el sistema.");
-      } else {
-        setFormError(msg);
-      }
-    } finally {
-      setCreating(false);
+    } catch {
+      // el error ya está en formError del hook
     }
   };
 
-  /* ─── Copiar al portapapeles ────────────────────────────────────────── */
+  /* ─── Copiar al portapapeles ─────────────────────────────────────────── */
   const copyToClipboard = async (text: string, key: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(key);
       setTimeout(() => setCopied(null), 2000);
-    } catch {
-      /* fallback silencioso */
-    }
+    } catch { /* fallback silencioso */ }
   };
 
   /* ─── Render ─────────────────────────────────────────────────────────── */
   return (
-    <div className="space-y-6" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="space-y-6">
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -146,7 +101,7 @@ export function UsuariosPage() {
           <p className="text-sm text-slate-500 ml-7">Registra nuevos usuarios y administra el acceso al sistema</p>
         </div>
         <button
-          onClick={cargar}
+          onClick={recargar}
           disabled={loading}
           className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
         >
@@ -375,7 +330,7 @@ export function UsuariosPage() {
       {/* ── Modal de Credenciales ───────────────────────────────────────── */}
       {creds && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" style={{ fontFamily: "'Inter', sans-serif" }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -394,7 +349,6 @@ export function UsuariosPage() {
 
             {/* Body */}
             <div className="p-5 space-y-3">
-              {/* Aviso */}
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
                 <AlertCircle size={13} className="text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-700">
