@@ -61,7 +61,7 @@ export function AnalisisIAPage() {
 
   return (
     <div>
-      {isGenerating && <GenerationModal data={selected} sensors={analysisSensorMeta} />}
+      {isGenerating && <GenerationModal data={selected as Record<string, unknown> | undefined} sensors={analysisSensorMeta} />}
       {compareOpen && analyses.length >= 2 && (
         <AnalysisCompareModal analyses={analyses} initialIdA={selectedId} onClose={() => setCompareOpen(false)} />
       )}

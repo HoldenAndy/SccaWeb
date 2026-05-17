@@ -18,9 +18,12 @@ function formatFecha(fecha: string | null): string {
   return formatFechaTabla(fecha);
 }
 
+import { useAnalysis } from "../contexts/AnalysisContext";
+
 export function NodosPage() {
   const { isAdmin, isSoporte } = useAuth();
   const { nodos, loading, error, recargar: recargarNodos } = useNodos();
+  const { recargarAnalisis } = useAnalysis();
   const [usuarios, setUsuarios] = useState<UsuarioDTO[]>([]);
 
   const [macAddress, setMacAddress] = useState("");
@@ -54,6 +57,7 @@ export function NodosPage() {
     try {
       const nuevo = await registrarNodo({ macAddress: cleanMac, ubicacion: cleanUbicacion, idUsuario: Number(idUsuario) });
       await recargarNodos();
+      await recargarAnalisis();
       const cliente = usuarios.find((u) => u.idUsuario === Number(idUsuario));
       setRegistrado({ nodo: nuevo, clienteNombre: cliente?.nombre ?? "Cliente" });
       setMacAddress(""); setUbicacion(""); setIdUsuario("");
