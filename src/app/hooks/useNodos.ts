@@ -1,12 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { getNodos, type NodoDTO } from "../../api/nodos";
 
-/**
- * useNodos — encapsula el fetch de la lista de nodos ESP32.
- *
- * Extraído de NodosPage donde el estado loading/error/data vivía mezclado
- * con el JSX. El componente ahora solo se ocupa de renderizar.
- */
 export interface UseNodosResult {
   nodos: NodoDTO[];
   loading: boolean;
@@ -15,9 +9,9 @@ export interface UseNodosResult {
 }
 
 export function useNodos(): UseNodosResult {
-  const [nodos, setNodos]   = useState<NodoDTO[]>([]);
+  const [nodos, setNodos] = useState<NodoDTO[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const recargar = useCallback(async () => {
     setLoading(true);

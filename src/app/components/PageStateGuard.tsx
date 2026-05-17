@@ -1,5 +1,6 @@
 import { AlertTriangle, Loader2, WifiOff, ServerOff, Cpu } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { parseError } from "../../lib/errors";
 
 interface Props {
   loadingInit: boolean;
@@ -21,8 +22,9 @@ export function PageStateGuard({ loadingInit, errorInit, loadingText = "Cargando
 
   if (!errorInit) return null;
 
-  // CLIENTE sin nodos asignados
-  if (errorInit === "SIN_NODOS" && isCliente) {
+  const { code } = parseError(errorInit);
+
+  if (code === "NO_NODES" && isCliente) {
     return (
       <div className="flex flex-col items-center justify-center min-h-64 gap-4">
         <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
@@ -38,8 +40,7 @@ export function PageStateGuard({ loadingInit, errorInit, loadingText = "Cargando
     );
   }
 
-  // Cualquier otro rol sin nodos (admin/soporte/gestionador con BD vacía)
-  if (errorInit === "SIN_NODOS") {
+  if (code === "NO_NODES") {
     return (
       <div className="flex flex-col items-center justify-center min-h-64 gap-4">
         <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center">
@@ -55,8 +56,7 @@ export function PageStateGuard({ loadingInit, errorInit, loadingText = "Cargando
     );
   }
 
-  // Error de conexión con el backend
-  if (errorInit.includes("fetch") || errorInit.includes("NetworkError") || errorInit.includes("Failed")) {
+  if (code === "NO_CONNECTION") {
     return (
       <div className="flex flex-col items-center justify-center min-h-64 gap-4">
         <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center">
@@ -73,7 +73,6 @@ export function PageStateGuard({ loadingInit, errorInit, loadingText = "Cargando
     );
   }
 
-  // Error genérico del servidor
   return (
     <div className="flex flex-col items-center justify-center min-h-64 gap-4">
       <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center">

@@ -1,12 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { getUsuarios, crearUsuario, type UsuarioDTO, type UsuarioRequest } from "../../api/auth";
 
-/**
- * useUsuarios — encapsula el fetch y la creación de usuarios.
- *
- * Extraído de UsuariosPage donde loading/error/data vivían mezclados con el JSX.
- * El componente ahora solo se ocupa de renderizar.
- */
 export interface UseUsuariosResult {
   usuarios: UsuarioDTO[];
   loading: boolean;
@@ -20,8 +14,8 @@ export interface UseUsuariosResult {
 
 export function useUsuarios(): UseUsuariosResult {
   const [usuarios, setUsuarios] = useState<UsuarioDTO[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 

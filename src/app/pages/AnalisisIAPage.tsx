@@ -1,54 +1,30 @@
 import {
   BrainCircuit, Calendar, Filter, AlertTriangle, CheckCircle2,
-  Clock, MessageSquare, Sparkles, Droplets, Thermometer, Eye, Zap,
-  Waves, Info, Loader2,
+  Clock, MessageSquare, Sparkles, Info, Loader2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
-import { useAnalysis, type AnalisisEnriquecido } from "../contexts/AnalysisContext";
+import { useAnalysis } from "../contexts/AnalysisContext";
+import { type AnalisisEnriquecido } from "../../lib/analisis";
 import { PageStateGuard } from "../components/PageStateGuard";
 import { isoToday } from "../../lib/fechas";
 import { StatusBadge } from "../components/shared/StatusBadge";
 import { PageHeader } from "../components/shared/PageHeader";
-
-// FIX E: tipado correcto de sensorMeta.
-// Las keys coinciden exactamente con los campos de AnalisisEnriquecido,
-// eliminando los dos `as any` que había en el componente.
-type SensorKey = "ph" | "temp" | "turb" | "tds";
-
-const sensorMeta: {
-  key: SensorKey;
-  label: string;
-  unit: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  color: string;
-  bg: string;
-  border: string;
-}[] = [
-  { key: "ph",   label: "pH",          unit: "",    icon: Droplets,    color: "text-cyan-600",   bg: "bg-cyan-50",   border: "border-cyan-100"   },
-  { key: "temp", label: "Temperatura", unit: "°C",  icon: Thermometer, color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100" },
-  { key: "turb", label: "Turbidez",    unit: "NTU", icon: Eye,         color: "text-purple-500", bg: "bg-purple-50", border: "border-purple-100" },
-  { key: "tds",  label: "TDS",         unit: "ppm", icon: Zap,         color: "text-emerald-600",bg: "bg-emerald-50",border: "border-emerald-100" },
-];
+import { GenerationModal } from "../components/shared/GenerationModal";
+import { analysisSensorMeta } from "../../lib/sensorConfig";
 
 export function AnalisisIAPage() {
-  // FIX A: una sola llamada a useAnalysis extrayendo todo lo necesario,
-  // incluido errorInit que antes requería una segunda llamada al hook.
   const {
     analyses, isGenerating, generarNuevoAnalisis,
     loadingInit, errorInit, lecturaConImagen,
   } = useAnalysis();
 
-  const [selectedId, setSelectedId]           = useState<number | null>(analyses[0]?.id ?? null);
-  const [fromDate, setFromDate]               = useState(isoToday());
-  const [toDate, setToDate]                   = useState(isoToday());
-  // Rango activo — solo se actualiza al pulsar "Filtrar", no en cada keystroke
-  const [activeRange, setActiveRange]         = useState<[string, string] | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(analyses[0]?.id ?? null);
+  const [fromDate, setFromDate] = useState(isoToday());
+  const [toDate, setToDate] = useState(isoToday());
+  const [activeRange, setActiveRange] = useState<[string, string] | null>(null);
 
-  // FIX useMemo: antes filteredAnalyses era un useState sincronizado manualmente
-  // con useEffect, lo que causaba un render extra y riesgo de desincronización.
-  // useMemo es la herramienta correcta para valores derivados de otro estado.
   const filteredAnalyses = useMemo(() => {
-    if (!activeRange) return analyses; // sin filtro activo → mostrar todos
+    if (!activeRange) return analyses;
     const [from, to] = activeRange.map((s) => new Date(s));
     return analyses.filter((a) => {
       const [datePart, timePart] = a.fecha.split(" ");
@@ -59,7 +35,6 @@ export function AnalisisIAPage() {
     });
   }, [analyses, activeRange]);
 
-  // Cuando llega un nuevo análisis, seleccionarlo automáticamente
   const latestId = analyses[0]?.id ?? null;
   if (latestId !== null && latestId !== selectedId && !activeRange) {
     setSelectedId(latestId);
@@ -69,64 +44,19 @@ export function AnalisisIAPage() {
     filteredAnalyses.find((a) => a.id === selectedId) ?? filteredAnalyses[0];
 
   const handleFilter = () => {
-    // Actualizar el rango activo dispara useMemo → filteredAnalyses se recalcula
     setActiveRange([`${fromDate}T00:00:00`, `${toDate}T23:59:59`]);
   };
 
   const handleGenerateAnalysis = async () => {
     await generarNuevoAnalisis();
-    // El useEffect detectará el nuevo análisis en `analyses` y actualizará selectedId.
   };
 
-  const guardEl = <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Cargando análisis..." />;
-  if (loadingInit || errorInit) return guardEl;
+  if (loadingInit || errorInit) return <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Cargando análisis..." />;
 
   return (
     <div className="space-y-5">
+      {isGenerating && <GenerationModal data={selected} sensors={analysisSensorMeta} />}
 
-      {/* Modal generación */}
-      {isGenerating && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center">
-                <BrainCircuit size={18} className="text-violet-600" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-slate-800">Generando análisis IA</h3>
-                <p className="text-xs text-slate-500">Procesando datos de sensores e imagen...</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              {sensorMeta.map((s) => (
-                <div key={s.key} className={`rounded-lg ${s.bg} border ${s.border} p-2.5`}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <s.icon size={12} className={s.color} />
-                    <span className="text-xs text-slate-600">{s.label}</span>
-                  </div>
-                  {/* FIX E: acceso tipado, sin `as any` */}
-                  <p className={`text-lg font-bold ${s.color}`} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                    {selected ? (selected[s.key] ?? "—") : "—"}
-                    <span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span>
-                  </p>
-                </div>
-              ))}
-            </div>
-            <div className="bg-violet-50 border border-violet-100 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Loader2 size={14} className="text-violet-600 animate-spin" />
-                <span className="text-xs font-medium text-violet-700">Procesando con Gemini Flash Lite...</span>
-              </div>
-              <div className="w-full bg-violet-200 rounded-full h-1.5 overflow-hidden">
-                <div className="bg-violet-600 h-full rounded-full animate-pulse" style={{ width: "70%" }}></div>
-              </div>
-              <p className="text-xs text-violet-600 mt-2">Tiempo estimado: ~40–60 segundos</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Header */}
       <PageHeader
         title="Análisis de Inteligencia Artificial"
         subtitle="Interpretación cualitativa de la calidad del agua"
@@ -138,7 +68,6 @@ export function AnalisisIAPage() {
         }
       />
 
-      {/* Filter */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
@@ -164,10 +93,7 @@ export function AnalisisIAPage() {
         </div>
       </div>
 
-      {/* Main layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-        {/* Left: lista */}
         <div className="lg:col-span-1 space-y-3">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
@@ -195,7 +121,6 @@ export function AnalisisIAPage() {
                 </button>
               ))}
             </div>
-
             <div className="p-3 border-t border-slate-100">
               <button
                 onClick={handleGenerateAnalysis}
@@ -214,7 +139,6 @@ export function AnalisisIAPage() {
           </div>
         </div>
 
-        {/* Right: detalle */}
         <div className="lg:col-span-2 space-y-4">
           {!selected ? (
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-10 text-center text-sm text-slate-400">
@@ -222,7 +146,6 @@ export function AnalisisIAPage() {
             </div>
           ) : (
             <>
-              {/* Valores de sensores */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -239,8 +162,7 @@ export function AnalisisIAPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {sensorMeta.map((s) => {
-                    // FIX E: acceso tipado, sin `as any`
+                  {analysisSensorMeta.map((s) => {
                     const val = selected[s.key];
                     return (
                       <div key={s.key} className={`rounded-xl ${s.bg} border ${s.border} p-3 text-center`}>
@@ -248,7 +170,7 @@ export function AnalisisIAPage() {
                           <s.icon size={16} className={s.color} />
                         </div>
                         <p className="text-xs text-slate-500 mb-0.5">{s.label}</p>
-                        <p className={`text-2xl font-bold ${s.color}`} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                        <p className={`text-2xl font-bold ${s.color} font-mono`}>
                           {val || "—"}<span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span>
                         </p>
                       </div>
@@ -257,7 +179,6 @@ export function AnalisisIAPage() {
                 </div>
               </div>
 
-              {/* Texto IA */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
                 <div className="flex items-center gap-2.5 mb-4">
                   <div className="w-9 h-9 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center">
@@ -269,14 +190,12 @@ export function AnalisisIAPage() {
                   </div>
                   <span className="ml-auto"><StatusBadge status={selected.estado === "Normal" ? "normal" : "warning"} /></span>
                 </div>
-
                 <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl p-4 border border-slate-100">
                   <div className="flex items-start gap-2.5">
                     <MessageSquare size={15} className="text-violet-400 mt-0.5 flex-shrink-0" />
                     <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{selected.texto}</p>
                   </div>
                 </div>
-
                 <div className="mt-4 flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3.5">
                   <Info size={15} className="text-blue-500 flex-shrink-0 mt-0.5" />
                   <div>
@@ -284,7 +203,6 @@ export function AnalisisIAPage() {
                     <p className="text-xs text-blue-700 leading-relaxed">{selected.recomendacion}</p>
                   </div>
                 </div>
-
                 {selected.alerta && (
                   <div className="mt-3 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
                     <AlertTriangle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
@@ -296,7 +214,6 @@ export function AnalisisIAPage() {
                     </div>
                   </div>
                 )}
-
                 <div className="flex items-center gap-1.5 mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
                   <CheckCircle2 size={11} className="text-emerald-500" />
                   Generado en {selected.tiempo}

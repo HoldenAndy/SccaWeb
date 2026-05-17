@@ -1,11 +1,4 @@
-/**
- * StatusBadge — componente compartido de estado de calidad.
- *
- * Antes existían versiones locales en DashboardPage (solo normal/warning),
- * HistorialPage (normal/warning/critical inline), AnalisisIAPage y NodosPage.
- * Este componente es la única implementación; cualquier cambio visual
- * se propaga a todas las páginas automáticamente.
- */
+import { memo } from "react";
 
 export type StatusLevel = "normal" | "warning" | "critical";
 
@@ -17,11 +10,10 @@ const CONFIG: Record<StatusLevel, { label: string; classes: string; dot: string 
 
 interface Props {
   status: StatusLevel;
-  /** Tamaño del punto indicador en px. Default: 6 (w-1.5 h-1.5) */
   dotSize?: "sm" | "md";
 }
 
-export function StatusBadge({ status, dotSize = "sm" }: Props) {
+export const StatusBadge = memo(function StatusBadge({ status, dotSize = "sm" }: Props) {
   const { label, classes, dot } = CONFIG[status];
   const dotClass = dotSize === "md" ? "w-2 h-2" : "w-1.5 h-1.5";
   return (
@@ -30,4 +22,4 @@ export function StatusBadge({ status, dotSize = "sm" }: Props) {
       {label}
     </span>
   );
-}
+});

@@ -1,29 +1,44 @@
+import { API } from "../lib/config";
+
 export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
-/** Lee el token JWT guardado en localStorage */
+const TIMEOUT_MESSAGE = "El servidor no respondió en el tiempo esperado (timeout 15 s).";
+
+export async function fetchWithTimeout(path: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API.TIMEOUT_MS);
+  try {
+    return await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(TIMEOUT_MESSAGE);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function withRetry<T>(fn: () => Promise<T>, retries: number, delayMs: number): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return withRetry(fn, retries - 1, delayMs);
+    }
+    throw err;
+  }
+}
+
 function getToken(): string | null {
   return localStorage.getItem("scca_token");
 }
 
-/**
- * Wrapper de fetch con inyección automática del JWT, timeout y manejo de 401.
- *
- * FIX #6a — Timeout de 15 s en cada request.
- * Si el backend no responde, el fetch ya no cuelga indefinidamente;
- * lanza un error con mensaje descriptivo que los componentes pueden mostrar.
- *
- * FIX #6b — 401 via evento global en lugar de window.location.href.
- * Antes: window.location.href forzaba un full-reload, saltándose el logout()
- * del AuthContext y dejando el estado de React sucio.
- * Ahora: se emite "auth:logout" → AuthContext lo escucha → llama logout()
- * → token pasa a null → AnalysisContext se limpia → el router redirige
- * sin recargar la página, manteniendo el ciclo de vida de React intacto.
- *
- * FIX storage — getToken() lee de localStorage (consistente con AuthContext).
- * El bloque 401 ya no necesita removeItem porque logout() en AuthContext
- * los elimina al recibir el evento "auth:logout".
- */
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, options?: RequestInit, retries = 1): Promise<T> {
   const token = getToken();
 
   const headers: Record<string, string> = {
@@ -35,34 +50,34 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // FIX #6a: AbortController para timeout de 15 segundos.
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 15_000);
-
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal,
-    });
+    res = await fetchWithTimeout(path, { ...options, headers });
   } catch (err) {
-    // AbortError = timeout; cualquier otro = red caída
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("El servidor no respondió en el tiempo esperado (timeout 15 s).");
+    if (err instanceof Error && err.message === TIMEOUT_MESSAGE) {
+      throw err;
     }
     throw new Error("No se pudo conectar con el servidor. Verifica tu conexión.");
-  } finally {
-    clearTimeout(timeoutId);
   }
 
   if (!res.ok) {
-    // FIX #6b: emitir evento en lugar de redirigir con window.location.href.
-    // AuthContext escucha "auth:logout" → llama logout() → limpia localStorage.
-    // No hace falta llamar removeItem aquí: logout() ya lo hace.
     if (res.status === 401) {
       window.dispatchEvent(new Event("auth:logout"));
       throw new Error("Sesión expirada. Por favor, inicia sesión nuevamente.");
+    }
+    if (res.status >= 500) {
+      return withRetry(
+        async () => {
+          const retryRes = await fetchWithTimeout(path, { ...options, headers });
+          if (!retryRes.ok) {
+            const text = await retryRes.text().catch(() => "");
+            throw new Error(`Error ${retryRes.status}: ${text || retryRes.statusText}`);
+          }
+          return retryRes.json() as Promise<T>;
+        },
+        retries,
+        1000,
+      );
     }
     const text = await res.text().catch(() => "");
     throw new Error(`Error ${res.status}: ${text || res.statusText}`);

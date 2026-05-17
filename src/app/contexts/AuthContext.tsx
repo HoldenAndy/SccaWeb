@@ -31,17 +31,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// FIX H: cambiado de sessionStorage a localStorage.
-// Con sessionStorage la sesión se perdía al cerrar la pestaña o abrir otra,
-// lo que es inconveniente para un sistema de monitoreo que se deja abierto.
-// localStorage persiste entre pestañas y reinicios del navegador.
-// La seguridad es equivalente: el token JWT tiene su propia expiración en el backend.
 const TOKEN_KEY = "scca_token";
-const USER_KEY  = "scca_user";
+const USER_KEY = "scca_user";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken]     = useState<string | null>(null);
-  const [user, setUser]       = useState<SessionUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const logout = useCallback(() => {
@@ -51,10 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(USER_KEY);
   }, []);
 
-  // Restaurar sesión al montar
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_KEY);
-    const savedUser  = localStorage.getItem(USER_KEY);
+    const savedUser = localStorage.getItem(USER_KEY);
     if (savedToken && savedUser) {
       try {
         setToken(savedToken);
@@ -67,14 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  // FIX #6b: escuchar el evento "auth:logout" emitido por apiFetch cuando
-  // recibe un 401. De esta forma el ciclo es:
-  //   apiFetch → dispatchEvent("auth:logout")
-  //   → logout() limpia estado y localStorage
-  //   → token pasa a null
-  //   → AnalysisProvider detecta token=null y limpia su estado
-  //   → ProtectedRoute detecta !isAuthenticated y redirige a /login
-  // Todo sin window.location.href, sin full-reload, sin estado sucio.
   useEffect(() => {
     window.addEventListener("auth:logout", logout);
     return () => window.removeEventListener("auth:logout", logout);
@@ -106,10 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   const isAuthenticated = !!token && !!user && !user.debeCambiarPassword;
-  const isAdmin       = user?.rol === "ADMINISTRADOR";
-  const isSoporte     = user?.rol === "SOPORTE";
+  const isAdmin = user?.rol === "ADMINISTRADOR";
+  const isSoporte = user?.rol === "SOPORTE";
   const isGestionador = user?.rol === "GESTIONADOR";
-  const isCliente     = user?.rol === "CLIENTE";
+  const isCliente = user?.rol === "CLIENTE";
 
   return (
     <AuthContext.Provider value={{

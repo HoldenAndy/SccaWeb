@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiFetch } from "./apiClient";
+import { fetchWithTimeout, apiFetch } from "./apiClient";
 
 export type RolUsuario = "ADMINISTRADOR" | "CLIENTE" | "SOPORTE" | "GESTIONADOR";
 
@@ -23,15 +23,8 @@ export interface UsuarioRequest {
   rol: RolUsuario;
 }
 
-// ─── Rutas públicas (sin token) ───────────────────────────────────────────
-// Estas dos funciones usan fetch directo porque se llaman ANTES de tener
-// un token (login) o pasando el token recién obtenido (cambiarPassword).
-// El resto de funciones usan apiFetch, que inyecta el token automáticamente
-// y redirige al login si recibe un 401.
-
-/** Login → devuelve token + info del usuario */
 export async function login(email: string, password: string): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+  const res = await fetchWithTimeout("/api/v1/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -43,9 +36,8 @@ export async function login(email: string, password: string): Promise<AuthRespon
   return res.json();
 }
 
-/** Cambiar contraseña temporal (requiere JWT recién obtenido) */
 export async function cambiarPassword(newPassword: string, token: string): Promise<string> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/auth/cambiar-password`, {
+  const res = await fetchWithTimeout("/api/v1/auth/cambiar-password", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -60,17 +52,10 @@ export async function cambiarPassword(newPassword: string, token: string): Promi
   return res.text();
 }
 
-// ─── Rutas protegidas (token inyectado por apiFetch) ─────────────────────
-// FIX #2 y #4: eliminado el parámetro `token` manual. apiFetch lo lee de
-// sessionStorage automáticamente y redirige al login si recibe un 401,
-// igual que el resto de endpoints protegidos de la aplicación.
-
-/** Listar todos los usuarios (solo ADMINISTRADOR) */
 export function getUsuarios(): Promise<UsuarioDTO[]> {
   return apiFetch<UsuarioDTO[]>("/api/v1/usuarios");
 }
 
-/** Crear usuario (solo ADMINISTRADOR) */
 export function crearUsuario(data: UsuarioRequest): Promise<UsuarioDTO> {
   return apiFetch<UsuarioDTO>("/api/v1/usuarios", {
     method: "POST",

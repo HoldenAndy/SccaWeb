@@ -1,73 +1,29 @@
 import {
-  Thermometer, Droplets, Eye, Zap, AlertTriangle, Camera, BrainCircuit,
-  Clock, TrendingUp, TrendingDown, Minus, CheckCircle2, Waves, ChevronRight,
-  Loader2, RefreshCw, Cpu,
+  AlertTriangle,
+  Clock, RefreshCw, Cpu, ChevronRight,
 } from "lucide-react";
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
-  type TooltipProps,
-} from "recharts";
-import type { ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import { useNavigate } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { PageStateGuard } from "../components/PageStateGuard";
 import { parseFechaBackend, formatHora } from "../../lib/fechas";
-import { type LecturaDTO } from "../../api/lecturas";
 import { useDatosGraficos } from "../hooks/useDatosGraficos";
-import { evaluarParametro, calcularPorcentaje, PARAMETROS_CALIDAD } from "../../domain/calidadAgua";
-import { StatusBadge } from "../components/shared/StatusBadge";
+import { evaluarParametro, PARAMETROS_CALIDAD, type ParametroKey } from "../../domain/calidadAgua";
+import { calcularTendencia } from "../../lib/tendencias";
 import { PageHeader } from "../components/shared/PageHeader";
-
-// ─── helpers ──────────────────────────────────────────────────────────────
-
-// formatHora centralizado en lib/fechas
-
-function tendencia(data: LecturaDTO[], key: keyof LecturaDTO): "up" | "down" | "stable" {
-  if (data.length < 2) return "stable";
-  const last = data[data.length - 1][key] as number;
-  const prev = data[data.length - 2][key] as number;
-  const diff = last - prev;
-  if (Math.abs(diff) < 0.05) return "stable";
-  return diff > 0 ? "up" : "down";
-}
-
-// ─── sub-components ───────────────────────────────────────────────────────
-
-function TrendBadge({ trend }: { trend: string }) {
-  if (trend === "up")   return <span className="flex items-center gap-0.5 text-xs font-medium text-red-500"><TrendingUp size={12} /> Subiendo</span>;
-  if (trend === "down") return <span className="flex items-center gap-0.5 text-xs font-medium text-emerald-500"><TrendingDown size={12} /> Bajando</span>;
-  return <span className="flex items-center gap-0.5 text-xs font-medium text-slate-400"><Minus size={12} /> Estable</span>;
-}
-
-// StatusBadge importado desde components/shared/StatusBadge.tsx
-
-// FIX #4: tipado correcto del tooltip de Recharts — eliminado `any`.
-// TooltipProps<ValueType, NameType> cubre active, payload y label.
-// La prop extra `unit` se añade con una intersección de tipos.
-const MiniTooltip = ({
-  active, payload, label, unit,
-}: TooltipProps<ValueType, NameType> & { unit?: string }) => {
-  if (active && payload?.length)
-    return <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-2.5 py-1.5"><p className="text-xs text-slate-400">{label}</p><p className="text-xs font-bold" style={{ color: payload[0].color }}>{payload[0].value} {unit}</p></div>;
-  return null;
-};
-
-const sensorMeta = [
-  { key: "ph"          as const, label: "pH",          unit: "",    icon: Droplets,     color: "text-cyan-600",   bg: "bg-cyan-50",   border: "border-cyan-100",   bar: "bg-cyan-500",   rangeMin: PARAMETROS_CALIDAD.ph.normalMin,          rangeMax: PARAMETROS_CALIDAD.ph.normalMax          },
-  { key: "temperatura" as const, label: "Temperatura", unit: "°C",  icon: Thermometer,  color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100", bar: "bg-orange-500", rangeMin: PARAMETROS_CALIDAD.temperatura.normalMin,  rangeMax: PARAMETROS_CALIDAD.temperatura.normalMax  },
-  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", icon: Eye,          color: "text-amber-600",  bg: "bg-amber-50",  border: "border-amber-100",  bar: "bg-amber-500",  rangeMin: PARAMETROS_CALIDAD.turbidez.normalMin,     rangeMax: PARAMETROS_CALIDAD.turbidez.normalMax     },
-  { key: "tds"         as const, label: "TDS",         unit: "ppm", icon: Zap,          color: "text-emerald-600",bg: "bg-emerald-50",border: "border-emerald-100",bar: "bg-emerald-500",rangeMin: PARAMETROS_CALIDAD.tds.normalMin,          rangeMax: PARAMETROS_CALIDAD.tds.normalMax          },
-];
+import { SensorCard } from "../components/shared/SensorCard";
+import { MiniChart } from "../components/shared/MiniChart";
+import { CameraPanel } from "../components/shared/CameraPanel";
+import { AnalysisSummary } from "../components/shared/AnalysisSummary";
+import { GenerationModal } from "../components/shared/GenerationModal";
+import { sensorMeta } from "../../lib/sensorConfig";
 
 const miniCharts = [
-  { key: "ph"          as const, label: "pH",          unit: "",    color: "#06b6d4", domain: [6.4, 7.6]  as [number,number], refLine: undefined as number|undefined },
-  { key: "temperatura" as const, label: "Temperatura", unit: "°C",  color: "#f97316", domain: [15,  35]   as [number,number], refLine: undefined as number|undefined },
-  { key: "turbidez"    as const, label: "Turbidez",    unit: "NTU", color: "#a855f7", domain: [0,   5]    as [number,number], refLine: PARAMETROS_CALIDAD.turbidez.normalMax },
-  { key: "tds"         as const, label: "TDS",         unit: "ppm", color: "#10b981", domain: [0,   600]  as [number,number], refLine: undefined as number|undefined },
+  { key: "ph" as ParametroKey, label: "pH", unit: "", color: "#06b6d4", domain: [6.4, 7.6] as [number, number], refLine: undefined as number | undefined },
+  { key: "temperatura" as ParametroKey, label: "Temperatura", unit: "°C", color: "#f97316", domain: [15, 35] as [number, number], refLine: undefined as number | undefined },
+  { key: "turbidez" as ParametroKey, label: "Turbidez", unit: "NTU", color: "#a855f7", domain: [0, 5] as [number, number], refLine: PARAMETROS_CALIDAD.turbidez.normalMax },
+  { key: "tds" as ParametroKey, label: "TDS", unit: "ppm", color: "#10b981", domain: [0, 600] as [number, number], refLine: undefined as number | undefined },
 ];
-
-// ─── main ─────────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -85,80 +41,30 @@ export function DashboardPage() {
     return () => clearInterval(t);
   }, []);
 
+  const chartDataFormatted = useMemo(() => chartData.map((d) => ({ ...d, time: formatHora(d.fechaHora) })), [chartData]);
+
   const lec = chartData[chartData.length - 1] ?? ultimaLectura;
-
-  const segsDesde = lec
-    ? Math.floor((Date.now() - parseFechaBackend(lec.fechaHora).getTime()) / 1000)
-    : null;
-
+  const segsDesde = lec ? Math.floor((Date.now() - parseFechaBackend(lec.fechaHora).getTime()) / 1000) : null;
   const turbWarning = lec && evaluarParametro("turbidez", lec.turbidez) !== "normal";
+  const nodoActual = nodos.find((n) => n.idNodo === idNodoActivo);
 
   const handleGenerateAnalysis = async () => {
     await generarNuevoAnalisis();
     navigate("/analisis-ia");
   };
 
-  // ── loading / error ───────────────────────────────────────────────────
-
-  const guardEl = <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Conectando con el backend..." />;
-  if (loadingInit || errorInit) return guardEl;
-
-  const chartDataFormatted = chartData.map((d) => ({
-    ...d,
-    time: formatHora(d.fechaHora),
-  }));
-
-  const nodoActual = nodos.find((n) => n.idNodo === idNodoActivo);
+  if (loadingInit || errorInit) {
+    return <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Conectando con el backend..." />;
+  }
 
   return (
     <div className="space-y-5">
+      {isGenerating && <GenerationModal data={lec} sensors={sensorMeta} />}
 
-      {/* Modal generación */}
-      {isGenerating && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center">
-                <BrainCircuit size={18} className="text-violet-600" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-slate-800">Generando análisis IA</h3>
-                <p className="text-xs text-slate-500">Procesando datos de sensores...</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              {sensorMeta.map((s) => (
-                <div key={s.key} className={`rounded-lg ${s.bg} border ${s.border} p-2.5`}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <s.icon size={12} className={s.color} />
-                    <span className="text-xs text-slate-600">{s.label}</span>
-                  </div>
-                  <p className={`text-lg font-bold ${s.color}`} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                    {lec ? lec[s.key] : "—"}<span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span>
-                  </p>
-                </div>
-              ))}
-            </div>
-            <div className="bg-violet-50 border border-violet-100 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Loader2 size={14} className="text-violet-600 animate-spin" />
-                <span className="text-xs font-medium text-violet-700">Procesando con Gemini Vision...</span>
-              </div>
-              <div className="w-full bg-violet-200 rounded-full h-1.5 overflow-hidden">
-                <div className="bg-violet-600 h-full rounded-full animate-pulse" style={{ width: "70%" }}></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Header */}
       <PageHeader
         title="Panel de Control"
         subtitle={`Monitoreo en tiempo real${segsDesde !== null ? ` · Última lectura hace ${segsDesde}s` : ""}`}
         actions={<>
-
-          {/* Selector de nodo — visible solo si hay más de uno */}
           {nodos.length > 1 && (
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1.5 shadow-sm">
               <Cpu size={12} className="text-slate-400" />
@@ -168,29 +74,25 @@ export function DashboardPage() {
                 className="text-xs text-slate-700 font-medium bg-transparent border-none outline-none cursor-pointer"
               >
                 {nodos.map((n) => (
-                  <option key={n.idNodo} value={n.idNodo}>
-                    {n.ubicacion} ({n.macAddress})
-                  </option>
+                  <option key={n.idNodo} value={n.idNodo}>{n.ubicacion} ({n.macAddress})</option>
                 ))}
               </select>
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${nodoActual?.estadoConexion ? "bg-emerald-500" : "bg-red-400"}`}></span>
             </div>
           )}
-
           <button onClick={cargarGraficos} disabled={loadingChart}
             className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50">
             <RefreshCw size={12} className={loadingChart ? "animate-spin" : ""} /> Refrescar
           </button>
           <div className="flex items-center gap-1.5 text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm">
             <Clock size={13} className="text-cyan-500" />
-            <span className="text-slate-600 font-medium" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
-              {String(ahora.getHours()).padStart(2,"0")}:{String(ahora.getMinutes()).padStart(2,"0")}:{String(ahora.getSeconds()).padStart(2,"0")}
+            <span className="text-slate-600 font-medium font-mono text-xs">
+              {String(ahora.getHours()).padStart(2, "0")}:{String(ahora.getMinutes()).padStart(2, "0")}:{String(ahora.getSeconds()).padStart(2, "0")}
             </span>
           </div>
         </>}
       />
 
-      {/* Alert banner — turbidez */}
       {turbWarning && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 shadow-sm">
           <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -208,8 +110,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Aviso sin imagen */}
-      {!lecturaConImagen && !loadingInit && (
+      {!lecturaConImagen && (
         <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 shadow-sm">
           <AlertTriangle size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-blue-700">
@@ -218,167 +119,53 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Sensor cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {sensorMeta.map((sensor) => {
-          const val = lec ? (lec[sensor.key] as number) : null;
-          const pct = val !== null ? calcularPorcentaje(sensor.key, val) : 0;
-          const trend = chartData.length > 1 ? tendencia(chartData, sensor.key) : "stable";
-          const isWarning = val !== null && evaluarParametro(sensor.key, val) !== "normal";
-          return (
-            <div key={sensor.key} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <div className={`w-9 h-9 rounded-xl ${sensor.bg} ${sensor.border} border flex items-center justify-center`}>
-                  <sensor.icon size={16} className={sensor.color} />
-                </div>
-                <StatusBadge status={isWarning ? "warning" : "normal"} />
-              </div>
-              <div className="mb-1">
-                <span className="text-3xl font-bold text-slate-800" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{val !== null ? val : "—"}</span>
-                <span className="text-sm text-slate-400 ml-1">{sensor.unit}</span>
-              </div>
-              <p className="text-sm font-medium text-slate-600 mb-3">{sensor.label}</p>
-              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
-                <div className={`h-full rounded-full ${sensor.bar} transition-all`} style={{ width: `${pct}%` }} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">{sensor.rangeMin} – {sensor.rangeMax} {sensor.unit}</span>
-                <TrendBadge trend={trend} />
-              </div>
-            </div>
-          );
-        })}
+        {sensorMeta.map((sensor) => (
+          <SensorCard
+            key={sensor.key}
+            sensorKey={sensor.key}
+            label={sensor.label}
+            unit={sensor.unit}
+            Icon={sensor.icon}
+            value={lec ? (lec[sensor.key] as number) : null}
+            trend={chartData.length > 1 ? calcularTendencia(chartData, sensor.key) : "stable"}
+            color={sensor.color}
+            bg={sensor.bg}
+            border={sensor.border}
+            bar={sensor.bar}
+            rangeMin={sensor.rangeMin}
+            rangeMax={sensor.rangeMax}
+          />
+        ))}
       </div>
 
-      {/* Charts + Camera */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
           {miniCharts.map((cfg) => (
-            <div key={cfg.key} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">{cfg.label}</p>
-                  <p className="text-xs text-slate-400">Últimas 2 horas</p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cfg.color }}></span>
-                  <span className="text-xs font-semibold" style={{ color: cfg.color, fontFamily: "'JetBrains Mono', monospace" }}>
-                    {lec ? (lec[cfg.key] as number) : "—"} {cfg.unit}
-                  </span>
-                </div>
-              </div>
-              <div className="h-32">
-                {chartDataFormatted.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                    {loadingChart ? "Cargando..." : "Sin datos en las últimas 2 h"}
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartDataFormatted} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id={`grad-dash-${cfg.key}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor={cfg.color} stopOpacity={0.18} />
-                          <stop offset="95%" stopColor={cfg.color} stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="time" tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} interval={Math.floor(chartDataFormatted.length / 4)} />
-                      <YAxis tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} domain={cfg.domain} />
-                      <Tooltip content={<MiniTooltip unit={cfg.unit} />} />
-                      {cfg.refLine && <ReferenceLine y={cfg.refLine} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1.5} />}
-                      <Area type="monotone" dataKey={cfg.key} stroke={cfg.color} strokeWidth={2} fill={`url(#grad-dash-${cfg.key})`} dot={false} activeDot={{ r: 3, fill: cfg.color, strokeWidth: 0 }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </div>
+            <MiniChart
+              key={cfg.key}
+              label={cfg.label}
+              unit={cfg.unit}
+              color={cfg.color}
+              domain={cfg.domain}
+              refLine={cfg.refLine}
+              dataKey={cfg.key}
+              data={chartDataFormatted}
+              currentValue={lec ? (lec[cfg.key] as number) : "—"}
+              loading={loadingChart}
+            />
           ))}
         </div>
-
-        {/* Camera */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-800">Cámara ESP32</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {nodoActual ? nodoActual.ubicacion : "Sin nodo seleccionado"}
-              </p>
-            </div>
-            <span className={`flex items-center gap-1 text-xs border rounded-full px-2 py-0.5 ${nodoActual?.estadoConexion ? "text-emerald-600 bg-emerald-50 border-emerald-200" : "text-slate-400 bg-slate-50 border-slate-200"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${nodoActual?.estadoConexion ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`}></span>
-              {nodoActual?.estadoConexion ? "Live" : "Offline"}
-            </span>
-          </div>
-          <div className="flex-1 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 flex flex-col items-center justify-center gap-3 min-h-[200px] relative overflow-hidden">
-            <div className="absolute inset-x-0 h-0.5 bg-cyan-400/40" style={{ animation: "scanline 3s linear infinite" }}></div>
-            <div className="w-12 h-12 rounded-full bg-slate-700 border-2 border-slate-600 flex items-center justify-center">
-              <Camera size={20} className="text-slate-400" />
-            </div>
-            <div className="text-center">
-              <p className="text-xs font-medium text-slate-300">640 × 480 px</p>
-              <p className="text-xs text-slate-500 mt-0.5">Actualización: cada 10 s</p>
-            </div>
-            {/* Indicador de MAC del nodo activo */}
-            {nodoActual && (
-              <div className="absolute bottom-3 left-0 right-0 flex justify-center">
-                <span className="text-xs text-slate-500 font-mono bg-slate-900/60 px-2 py-0.5 rounded-full">
-                  {nodoActual.macAddress}
-                </span>
-              </div>
-            )}
-            <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-cyan-400/50 rounded-tl"></div>
-            <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-cyan-400/50 rounded-tr"></div>
-            <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-cyan-400/50 rounded-bl"></div>
-            <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-cyan-400/50 rounded-br"></div>
-          </div>
-          <div className="mt-3 text-xs text-slate-400">
-            <span>Última captura: {lec ? formatHora(lec.fechaHora) : "—"}</span>
-          </div>
-        </div>
+        <CameraPanel nodo={nodoActual} lastCaptureTime={lec?.fechaHora} />
       </div>
 
-      {/* AI summary */}
-      {analyses.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center">
-                <BrainCircuit size={16} className="text-violet-600" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-slate-800">Análisis IA — Resumen Actual</h2>
-                <p className="text-xs text-slate-400">Generado: {analyses[0].fecha} · {analyses[0].tiempo} · Gemini Flash Lite</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
-                <CheckCircle2 size={11} /> Completado
-              </span>
-              <button onClick={() => navigate("/analisis-ia")} className="flex items-center gap-1.5 text-xs font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5 hover:bg-violet-100 transition-colors">
-                Ver completo <ChevronRight size={11} />
-              </button>
-            </div>
-          </div>
-          <div className="bg-gradient-to-r from-violet-50 to-blue-50 rounded-xl p-4 border border-violet-100">
-            <p className="text-sm text-slate-700 leading-relaxed">{analyses[0].resumen}</p>
-          </div>
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={handleGenerateAnalysis}
-              disabled={isGenerating || !ultimaLectura || !lecturaConImagen}
-              className="flex items-center gap-1.5 text-xs font-medium text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-3.5 py-2 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              title={!lecturaConImagen ? "La lectura actual no tiene imagen asociada" : ""}
-            >
-              {isGenerating
-                ? <><Loader2 size={12} className="animate-spin" /> Generando...</>
-                : <><BrainCircuit size={12} /> Generar nuevo análisis</>}
-            </button>
-            {!lecturaConImagen && (
-              <span className="text-xs text-amber-600">Requiere imagen de la cámara</span>
-            )}
-          </div>
-        </div>
-      )}
+      <AnalysisSummary
+        analyses={analyses}
+        isGenerating={isGenerating}
+        ultimaLectura={ultimaLectura}
+        lecturaConImagen={lecturaConImagen}
+        onGenerate={handleGenerateAnalysis}
+      />
     </div>
   );
 }

@@ -1,17 +1,13 @@
 import { useState } from "react";
 import {
   ScrollText, RefreshCw, AlertTriangle, Info, Loader2,
-  CheckCircle2, XCircle, Waves, Filter,
+  CheckCircle2, XCircle, Filter,
   type LucideProps,
 } from "lucide-react";
 import { formatFechaConSegundos } from "../../lib/fechas";
-import { useLogs, type LogDTO } from "../hooks/useLogs";
+import { useLogs } from "../hooks/useLogs";
 import { PageHeader } from "../components/shared/PageHeader";
 
-// formatFechaConSegundos centralizado en lib/fechas
-
-// FIX #3: tipado correcto del campo icon usando LucideProps en lugar de any.
-// Todos los iconos de lucide-react implementan esta interfaz.
 const NIVEL_META: Record<string, { icon: React.ComponentType<LucideProps>; bg: string; text: string; border: string }> = {
   INFO:  { icon: Info,          bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-200"  },
   WARN:  { icon: AlertTriangle, bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
@@ -26,9 +22,7 @@ export function LogsPage() {
   const [nivelFiltro, setNivelFiltro] = useState<string>("TODOS");
 
   const niveles = ["TODOS", "INFO", "WARN", "ERROR", "DEBUG"];
-  const logsFiltrados = nivelFiltro === "TODOS"
-    ? logs
-    : logs.filter((l) => l.nivel.toUpperCase() === nivelFiltro);
+  const logsFiltrados = nivelFiltro === "TODOS" ? logs : logs.filter((l) => l.nivel.toUpperCase() === nivelFiltro);
 
   const conteos = logs.reduce<Record<string, number>>((acc, l) => {
     const n = l.nivel.toUpperCase();
@@ -38,23 +32,17 @@ export function LogsPage() {
 
   return (
     <div className="space-y-5">
-
-      {/* Header */}
       <PageHeader
         title="Logs del Sistema"
         subtitle={logs.length > 0 ? `${logs.length} registros recientes` : "Actividad y eventos del servidor"}
         actions={
-          <button
-            onClick={recargar}
-            disabled={loading}
-            className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
-          >
+          <button onClick={recargar} disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50">
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Actualizar
           </button>
         }
       />
 
-      {/* Resumen de conteos */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {(["INFO", "WARN", "ERROR", "DEBUG"] as const).map((n) => {
           const meta = NIVEL_META[n] ?? defaultMeta;
@@ -66,16 +54,13 @@ export function LogsPage() {
               </div>
               <div>
                 <p className="text-xs text-slate-500">{n}</p>
-                <p className="text-xl font-bold text-slate-800" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                  {conteos[n] ?? 0}
-                </p>
+                <p className="text-xl font-bold text-slate-800" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{conteos[n] ?? 0}</p>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Filtro por nivel */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
@@ -83,15 +68,10 @@ export function LogsPage() {
             <span className="text-sm font-semibold text-slate-700">Filtrar por nivel</span>
           </div>
           {niveles.map((n) => (
-            <button
-              key={n}
-              onClick={() => setNivelFiltro(n)}
+            <button key={n} onClick={() => setNivelFiltro(n)}
               className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                nivelFiltro === n
-                  ? "bg-cyan-500 text-white border-cyan-500 shadow-sm"
-                  : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
-              }`}
-            >
+                nivelFiltro === n ? "bg-cyan-500 text-white border-cyan-500 shadow-sm" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+              }`}>
               {n} {n !== "TODOS" && conteos[n] ? `(${conteos[n]})` : ""}
             </button>
           ))}
@@ -99,7 +79,6 @@ export function LogsPage() {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
           <XCircle size={16} className="text-red-500" />
@@ -107,16 +86,12 @@ export function LogsPage() {
         </div>
       )}
 
-      {/* Lista de logs */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
           <ScrollText size={15} className="text-slate-400" />
           <h2 className="text-sm font-semibold text-slate-800">Registros recientes</h2>
-          <span className="ml-auto text-xs text-slate-400 bg-slate-100 rounded-full px-2.5 py-1">
-            Últimos 100
-          </span>
+          <span className="ml-auto text-xs text-slate-400 bg-slate-100 rounded-full px-2.5 py-1">Últimos 100</span>
         </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-16 gap-2">
             <Loader2 size={20} className="text-cyan-500 animate-spin" />
@@ -139,15 +114,9 @@ export function LogsPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${meta.bg} ${meta.text} ${meta.border}`}>
-                        {log.nivel.toUpperCase()}
-                      </span>
-                      <span className="text-xs font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">
-                        {log.modulo}
-                      </span>
-                      <span className="text-xs text-slate-400 ml-auto" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                        {formatFechaConSegundos(log.fechaHora)}
-                      </span>
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${meta.bg} ${meta.text} ${meta.border}`}>{log.nivel.toUpperCase()}</span>
+                      <span className="text-xs font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">{log.modulo}</span>
+                      <span className="text-xs text-slate-400 ml-auto" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatFechaConSegundos(log.fechaHora)}</span>
                     </div>
                     <p className="text-sm text-slate-700 leading-relaxed">{log.mensaje}</p>
                   </div>
