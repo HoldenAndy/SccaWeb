@@ -1,19 +1,17 @@
 import { memo } from "react";
-import { Shield } from "lucide-react";
 import { type RolUsuario } from "../../../api/auth";
 
-const ROLES: { value: RolUsuario; label: string; color: string; bg: string }[] = [
-  { value: "ADMINISTRADOR", label: "Administrador", color: "text-red-600", bg: "bg-red-50 border-red-200" },
-  { value: "CLIENTE", label: "Cliente", color: "text-blue-600", bg: "bg-blue-50 border-blue-200" },
-  { value: "SOPORTE", label: "Soporte", color: "text-amber-600", bg: "bg-amber-50 border-amber-200" },
-  { value: "GESTIONADOR", label: "Gestionador", color: "text-violet-600", bg: "bg-violet-50 border-violet-200" },
-];
+const ROLES: Record<RolUsuario, { label: string; fg: string; bg: string }> = {
+  ADMINISTRADOR: { label: "Administrador", fg: "text-[var(--scca-danger)]", bg: "bg-[var(--scca-danger-bg)]" },
+  CLIENTE:       { label: "Cliente",       fg: "text-[var(--scca-accent)]", bg: "bg-[var(--scca-accent-soft)]" },
+  SOPORTE:       { label: "Soporte",       fg: "text-[var(--scca-warn)]",   bg: "bg-[var(--scca-warn-bg)]" },
+  GESTIONADOR:   { label: "Gestionador",   fg: "text-[#4a2570]",            bg: "bg-[#f4eef9]" },
+};
 
 export const RolBadge = memo(function RolBadge({ rol }: { rol: RolUsuario }) {
-  const meta = ROLES.find((r) => r.value === rol) ?? ROLES[1];
+  const meta = ROLES[rol] ?? ROLES.CLIENTE;
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${meta.bg} ${meta.color}`}>
-      <Shield size={10} />
+    <span className={`inline-flex items-center text-[10px] font-medium uppercase tracking-[0.08em] px-1.5 py-0.5 rounded-sm ${meta.bg} ${meta.fg}`}>
       {meta.label}
     </span>
   );

@@ -127,8 +127,15 @@ export function AnalysisProvider({ children, token }: AnalysisProviderProps) {
       }
 
       setNodos(todosNodos);
-      const nodoInicial = todosNodos.find((n) => n.estadoConexion) ?? todosNodos[0];
+
+      const savedId = localStorage.getItem("scca_active_node");
+      const exists = savedId && todosNodos.some((n) => n.idNodo === Number(savedId));
+      const nodoInicial = exists
+        ? todosNodos.find((n) => n.idNodo === Number(savedId))!
+        : todosNodos.find((n) => n.estadoConexion) ?? todosNodos[0];
+
       setIdNodoActivo(nodoInicial.idNodo);
+      localStorage.setItem("scca_active_node", String(nodoInicial.idNodo));
       await cargarDatosDeNodo(nodoInicial.idNodo);
     } catch (err: unknown) {
       setErrorInit(err instanceof Error ? err.message : String(err));
@@ -152,6 +159,7 @@ export function AnalysisProvider({ children, token }: AnalysisProviderProps) {
 
   const cambiarNodoActivo = useCallback((idNodo: number) => {
     setIdNodoActivo(idNodo);
+    localStorage.setItem("scca_active_node", String(idNodo));
     cargarDatosDeNodo(idNodo);
   }, [cargarDatosDeNodo]);
 

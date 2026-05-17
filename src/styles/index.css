@@ -3,16 +3,29 @@
 @import './theme.css';
 
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Geist', system-ui, -apple-system, sans-serif;
 }
 
 .bg-grid-pattern {
-  background-image: linear-gradient(rgba(6,182,212,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(6,182,212,.3) 1px,transparent 1px);
-  background-size: 40px 40px;
+  background-image:
+    linear-gradient(to right, var(--scca-hair-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--scca-hair-soft) 1px, transparent 1px);
+  background-size: 56px 56px;
 }
 
 @keyframes scanline {
-  0% { top: 0; opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { top: 100%; opacity: 0.6; }
+  0%   { top: 0;   opacity: 0.4; }
+  50%  { opacity: 1; }
+  100% { top: 100%; opacity: 0.4; }
 }
+
+/* Drawer slide-in for NodoDetailDrawer (C15) */
+@keyframes scca-drawer-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.scca-drawer { animation: scca-drawer-in 220ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+
+/* Fade-in for modals/dialogs */
+@keyframes scca-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.scca-fade-in { animation: scca-fade-in 160ms ease-out; }

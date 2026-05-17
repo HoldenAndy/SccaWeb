@@ -1,5 +1,3 @@
-import { Waves } from "lucide-react";
-
 interface Props {
   title: string;
   subtitle: string;
@@ -8,19 +6,18 @@ interface Props {
 
 export function PageHeader({ title, subtitle, actions }: Props) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div>
-        <div className="flex items-center gap-2 mb-0.5">
-          <Waves size={18} className="text-cyan-500" />
-          <h1 className="text-xl font-bold text-slate-800">{title}</h1>
+    <div className="border-b border-[var(--scca-hair)] px-4 md:px-8 py-6">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-[26px] font-medium text-[var(--scca-ink)] tracking-[-0.02em] leading-[1.1]">
+            {title}
+          </h1>
+          <p className="text-[13px] text-[var(--scca-muted)] mt-2 max-w-[640px] leading-snug">
+            {subtitle}
+          </p>
         </div>
-        <p className="text-sm text-slate-500 ml-6.5">{subtitle}</p>
+        {actions && <div className="flex items-center gap-2 flex-wrap flex-shrink-0">{actions}</div>}
       </div>
-      {actions && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {actions}
-        </div>
-      )}
     </div>
   );
 }

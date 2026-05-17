@@ -3,20 +3,22 @@ import { useState } from "react";
 import { Header } from "./layout/Header";
 import { Sidebar } from "./layout/Sidebar";
 import { useAuth } from "../contexts/AuthContext";
+import { CommandPalette } from "./shared/CommandPalette";
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen bg-[#f0f6ff] flex flex-col">
-      <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} sidebarOpen={sidebarOpen} />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
-        <main className="flex-1 p-4 md:p-6 overflow-auto">
+    <div className="min-h-screen bg-[var(--scca-bg)] flex">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} sidebarOpen={sidebarOpen} />
+        <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

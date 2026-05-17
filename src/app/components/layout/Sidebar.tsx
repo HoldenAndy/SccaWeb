@@ -1,16 +1,17 @@
 import { NavLink } from "react-router";
-import { LayoutDashboard, LineChart, BrainCircuit, Users, ScrollText, Cpu } from "lucide-react";
+import { LayoutDashboard, LineChart, BrainCircuit, Users, ScrollText, Cpu, Settings } from "lucide-react";
 import type { RolUsuario } from "../../api/auth";
 import { hasRole } from "../../../lib/roles";
 import type { SessionUser } from "../../contexts/AuthContext";
 
 const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, description: "Tiempo real", roles: null as RolUsuario[] | null },
-  { to: "/historial", label: "Historial", icon: LineChart, description: "Datos históricos", roles: null },
-  { to: "/analisis-ia", label: "Análisis IA", icon: BrainCircuit, description: "Interpretación", roles: null },
-  { to: "/usuarios", label: "Usuarios", icon: Users, description: "Gestión de acceso", roles: ["ADMINISTRADOR"] },
-  { to: "/logs", label: "Logs", icon: ScrollText, description: "Eventos del servidor", roles: ["ADMINISTRADOR", "SOPORTE"] },
-  { to: "/nodos", label: "Nodos", icon: Cpu, description: "Dispositivos ESP32", roles: ["ADMINISTRADOR", "SOPORTE", "GESTIONADOR"] },
+  { to: "/",             label: "Panel",        desc: "Tiempo real",       icon: LayoutDashboard, roles: null as RolUsuario[] | null },
+  { to: "/historial",    label: "Historial",    desc: "Datos históricos",  icon: LineChart,       roles: null },
+  { to: "/analisis-ia",  label: "Análisis IA",  desc: "Interpretación",    icon: BrainCircuit,    roles: null },
+  { to: "/nodos",        label: "Nodos",        desc: "Dispositivos",      icon: Cpu,             roles: ["ADMINISTRADOR", "SOPORTE", "GESTIONADOR"] },
+  { to: "/usuarios",     label: "Usuarios",     desc: "Cuentas",           icon: Users,           roles: ["ADMINISTRADOR"] },
+  { to: "/logs",         label: "Registros",    desc: "Eventos servidor",  icon: ScrollText,      roles: ["ADMINISTRADOR", "SOPORTE"] },
+  { to: "/preferencias", label: "Preferencias", desc: "Apariencia · perfil", icon: Settings,      roles: null },
 ] as const;
 
 interface Props {
@@ -20,40 +21,60 @@ interface Props {
 }
 
 export function Sidebar({ open, onClose, user }: Props) {
-  const visibleNavItems = navItems.filter((item) => {
-    if (!item.roles) return true;
-    return hasRole(user, item.roles);
-  });
+  const visibleNavItems = navItems.filter((item) => !item.roles || hasRole(user, item.roles));
 
   return (
     <>
-      {open && (
-        <div className="fixed inset-0 bg-black/40 z-30 md:hidden backdrop-blur-sm" onClick={onClose} />
-      )}
-      <aside className={`${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 fixed md:relative z-40 h-full md:h-auto w-60 flex flex-col transition-transform duration-200 bg-[#0d1f3c] shadow-xl`} style={{ minHeight: "calc(100vh - 57px)" }}>
-        <div className="px-4 pt-5 pb-2">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Módulos</p>
+      {open && <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={onClose} />}
+      <aside
+        className={`${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
+          fixed md:relative z-40 h-screen md:h-auto w-[220px] flex-shrink-0
+          flex flex-col transition-transform duration-200
+          bg-[var(--scca-bg)] border-r border-[var(--scca-hair)]`}
+      >
+        {/* Brand */}
+        <div className="px-5 pt-5 pb-4 border-b border-[var(--scca-hair)]">
+          <NavLink to="/" className="flex items-baseline gap-1.5 rounded-sm">
+            <span className="text-[22px] font-semibold text-[var(--scca-ink)] tracking-[-0.04em] leading-none">SCCA</span>
+            <span className="text-[10px] text-[var(--scca-accent)] font-medium tracking-wider">v2.1</span>
+          </NavLink>
+          <p className="text-[11px] text-[var(--scca-muted)] mt-1.5 leading-snug max-w-[160px]">
+            Sistema de Control de Calidad del Agua
+          </p>
         </div>
-        <nav className="flex flex-col gap-1 px-3 flex-1">
-          {visibleNavItems.map(({ to, label, icon: Icon, description }) => (
-            <NavLink key={to} to={to} end={to === "/"} onClick={onClose} className={({ isActive }) => `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${isActive ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/10 text-cyan-400 border border-cyan-500/30" : "text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent"}`}>
+
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-3 flex flex-col gap-px overflow-y-auto">
+          <div className="scca-caps px-2.5 pb-2 pt-1">Módulos</div>
+          {visibleNavItems.map(({ to, label, desc, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/"}
+              onClick={onClose}
+              className={({ isActive }) =>
+                `group relative flex items-center gap-2.5 px-2.5 py-2 rounded text-[12.5px] transition-colors
+                 ${isActive
+                   ? "bg-[var(--scca-surface)] text-[var(--scca-ink)]"
+                   : "text-[var(--scca-ink-2)] hover:bg-[var(--scca-hair-soft)]"}`
+              }
+            >
               {({ isActive }) => (
                 <>
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${isActive ? "bg-cyan-500/20" : "bg-white/5 group-hover:bg-white/10"}`}>
-                    <Icon size={15} className={isActive ? "text-cyan-400" : "text-slate-400 group-hover:text-slate-300"} />
-                  </div>
-                  <div>
-                    <p className={`leading-none text-sm ${isActive ? "text-cyan-300 font-medium" : ""}`}>{label}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{description}</p>
-                  </div>
-                  {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></div>}
+                  {isActive && <span className="absolute -left-3 top-1 bottom-1 w-[2px] bg-[var(--scca-accent)] rounded-full" aria-hidden />}
+                  <Icon size={14} strokeWidth={1.5} className={isActive ? "text-[var(--scca-accent)]" : "text-[var(--scca-muted)]"} />
+                  <span className={isActive ? "font-medium" : ""}>{label}</span>
+                  <span className="ml-auto text-[10px] text-[var(--scca-faint)]">{desc}</span>
                 </>
               )}
             </NavLink>
           ))}
         </nav>
-        <div className="px-4 pb-5 mt-auto">
-          <p className="text-xs text-slate-600 text-center">AquaMonitor v2.1.0</p>
+
+        {/* Footer (sin "backend" tag) */}
+        <div className="px-4 py-3 border-t border-[var(--scca-hair)] text-[10px] text-[var(--scca-faint)] flex items-center justify-between">
+          <span>SCCA · v2.1.0</span>
+          <kbd className="border border-[var(--scca-hair)] rounded-sm px-1.5 py-0.5 text-[9.5px] font-mono">⌘K</kbd>
         </div>
       </aside>
     </>

@@ -1,8 +1,5 @@
-import {
-  BrainCircuit, Calendar, Filter, AlertTriangle, CheckCircle2,
-  Clock, MessageSquare, Sparkles, Info, Loader2,
-} from "lucide-react";
-import { useState, useMemo } from "react";
+import { BrainCircuit, Calendar, Filter, AlertTriangle, CheckCircle2, Clock, Info, Loader2, Columns, Sparkles } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useAnalysis } from "../contexts/AnalysisContext";
 import { type AnalisisEnriquecido } from "../../lib/analisis";
 import { PageStateGuard } from "../components/PageStateGuard";
@@ -10,18 +7,29 @@ import { isoToday } from "../../lib/fechas";
 import { StatusBadge } from "../components/shared/StatusBadge";
 import { PageHeader } from "../components/shared/PageHeader";
 import { GenerationModal } from "../components/shared/GenerationModal";
+import { EmptyState } from "../components/shared/EmptyState";
+import { SkeletonText } from "../components/shared/Skeleton";
+import { AnalysisCompareModal } from "../components/shared/AnalysisCompareModal";
 import { analysisSensorMeta } from "../../lib/sensorConfig";
+import { toast } from "sonner";
 
 export function AnalisisIAPage() {
-  const {
-    analyses, isGenerating, generarNuevoAnalisis,
-    loadingInit, errorInit, lecturaConImagen,
-  } = useAnalysis();
+  const { analyses, isGenerating, generarNuevoAnalisis, loadingInit, errorInit, lecturaConImagen } = useAnalysis();
 
   const [selectedId, setSelectedId] = useState<number | null>(analyses[0]?.id ?? null);
   const [fromDate, setFromDate] = useState(isoToday());
   const [toDate, setToDate] = useState(isoToday());
   const [activeRange, setActiveRange] = useState<[string, string] | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  const prevLatestIdRef = useRef<number | null>(analyses[0]?.id ?? null);
+  useEffect(() => {
+    const latestId = analyses[0]?.id ?? null;
+    if (latestId !== null && latestId !== prevLatestIdRef.current) {
+      prevLatestIdRef.current = latestId;
+      if (!activeRange) setSelectedId(latestId);
+    }
+  }, [analyses, activeRange]);
 
   const filteredAnalyses = useMemo(() => {
     if (!activeRange) return analyses;
@@ -35,192 +43,227 @@ export function AnalisisIAPage() {
     });
   }, [analyses, activeRange]);
 
-  const latestId = analyses[0]?.id ?? null;
-  if (latestId !== null && latestId !== selectedId && !activeRange) {
-    setSelectedId(latestId);
-  }
-
   const selected: AnalisisEnriquecido | undefined =
     filteredAnalyses.find((a) => a.id === selectedId) ?? filteredAnalyses[0];
 
-  const handleFilter = () => {
-    setActiveRange([`${fromDate}T00:00:00`, `${toDate}T23:59:59`]);
+  const handleFilter = () => setActiveRange([`${fromDate}T00:00:00`, `${toDate}T23:59:59`]);
+  const handleGenerate = async () => {
+    const id = toast.loading("Generando análisis IA…", { description: "Procesando lectura + imagen ESP32-CAM" });
+    try {
+      await generarNuevoAnalisis();
+      toast.success("Análisis generado", { id });
+    } catch (err: unknown) {
+      toast.error("Error al generar análisis", { id, description: err instanceof Error ? err.message : undefined });
+    }
   };
 
-  const handleGenerateAnalysis = async () => {
-    await generarNuevoAnalisis();
-  };
-
-  if (loadingInit || errorInit) return <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Cargando análisis..." />;
+  if (loadingInit || errorInit) return <PageStateGuard loadingInit={loadingInit} errorInit={errorInit} loadingText="Cargando análisis…" />;
 
   return (
-    <div className="space-y-5">
+    <div>
       {isGenerating && <GenerationModal data={selected} sensors={analysisSensorMeta} />}
+      {compareOpen && analyses.length >= 2 && (
+        <AnalysisCompareModal analyses={analyses} initialIdA={selectedId} onClose={() => setCompareOpen(false)} />
+      )}
 
       <PageHeader
-        title="Análisis de Inteligencia Artificial"
-        subtitle="Interpretación cualitativa de la calidad del agua"
+        title="Análisis de inteligencia artificial"
+        subtitle="Interpretación cualitativa de la calidad del agua mediante el modelo Gemini Flash Lite. Latencia típica ~47 s."
         actions={
-          <div className="flex items-center gap-1.5 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-3 py-1.5">
-            <Sparkles size={12} />
-            <span className="font-medium">Gemini Flash Lite · Latencia máx: ~60 s</span>
-          </div>
+          <>
+            {analyses.length >= 2 && (
+              <button
+                onClick={() => setCompareOpen(true)}
+                className="flex items-center gap-1.5 text-[11px] text-[var(--scca-ink-2)] border border-[var(--scca-hair)] rounded-sm px-3 py-1.5 hover:bg-[var(--scca-surface)] transition-colors"
+              >
+                <Columns size={11} strokeWidth={1.5} /> Comparar dos
+              </button>
+            )}
+            <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.08em] text-[var(--scca-accent)] border border-[var(--scca-hair)] rounded-sm px-2.5 py-1">
+              <Sparkles size={10} strokeWidth={1.5} />
+              Gemini Flash Lite · ~60 s
+            </div>
+          </>
         }
       />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="px-4 md:px-8 py-6 flex flex-col" style={{ gap: "var(--scca-section-gap)" }}>
+        {/* Filter row */}
+        <div className="border border-[var(--scca-hair)] rounded-md p-3 flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <Calendar size={15} className="text-slate-400" />
-            <span className="text-sm font-semibold text-slate-700">Filtrar análisis por fecha</span>
+            <Calendar size={12} strokeWidth={1.5} className="text-[var(--scca-muted)]" />
+            <span className="scca-caps">Filtrar por fecha</span>
           </div>
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-            <label className="text-xs text-slate-500">Desde</label>
+          <div className="flex items-center gap-1.5 border border-[var(--scca-hair)] rounded-sm px-2.5 py-1.5">
+            <label className="text-[10px] text-[var(--scca-muted)]">Desde</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="text-xs text-slate-700 bg-transparent border-none outline-none" />
+              className="text-[11px] text-[var(--scca-ink)] bg-transparent border-none outline-none font-mono" />
           </div>
-          <span className="text-slate-400 text-sm">→</span>
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-            <label className="text-xs text-slate-500">Hasta</label>
+          <span className="text-[var(--scca-faint)]">→</span>
+          <div className="flex items-center gap-1.5 border border-[var(--scca-hair)] rounded-sm px-2.5 py-1.5">
+            <label className="text-[10px] text-[var(--scca-muted)]">Hasta</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="text-xs text-slate-700 bg-transparent border-none outline-none" />
+              className="text-[11px] text-[var(--scca-ink)] bg-transparent border-none outline-none font-mono" />
           </div>
           <button onClick={handleFilter}
-            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg px-4 py-1.5 hover:from-cyan-600 hover:to-blue-700 transition-all shadow-sm">
-            <Filter size={12} /> Filtrar
+            className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--scca-bg)] bg-[var(--scca-ink)] rounded-sm px-3 py-1.5 hover:bg-[var(--scca-ink-2)] transition-colors">
+            <Filter size={11} strokeWidth={1.5} /> Aplicar
           </button>
-          <span className="text-xs text-slate-500 ml-auto">{filteredAnalyses.length} análisis encontrados</span>
+          {activeRange && (
+            <button
+              onClick={() => setActiveRange(null)}
+              className="text-[10.5px] text-[var(--scca-muted)] hover:text-[var(--scca-ink)] transition-colors"
+            >
+              Limpiar
+            </button>
+          )}
+          <span className="ml-auto text-[11px] text-[var(--scca-muted)]">
+            <span className="font-mono">{filteredAnalyses.length}</span> análisis
+          </span>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-1 space-y-3">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-800">Análisis disponibles</h2>
-              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{analyses.length}</span>
-            </div>
-            <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto">
-              {filteredAnalyses.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-6">No hay análisis en el período seleccionado</p>
-              ) : filteredAnalyses.map((a) => (
-                <button key={a.id} onClick={() => setSelectedId(a.id)}
-                  className={`w-full text-left rounded-xl p-3 transition-all border ${selectedId === a.id ? "bg-gradient-to-r from-violet-50 to-blue-50 border-violet-200" : "bg-slate-50 border-transparent hover:bg-slate-100"}`}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <Calendar size={11} className="text-slate-400" />
-                      <span className="text-xs font-medium text-slate-600">{a.fecha}</span>
-                    </div>
-                    <StatusBadge status={a.estado === "Aviso" ? "warning" : "normal"} />
-                  </div>
-                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">{a.resumen}</p>
-                  <div className="flex items-center gap-3 mt-2">
-                    <span className="flex items-center gap-1 text-xs text-slate-400"><Clock size={9} /> {a.tiempo}</span>
-                    <span className="flex items-center gap-1 text-xs text-slate-400"><BrainCircuit size={9} /> IA procesada</span>
-                  </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* List */}
+          <aside className="lg:col-span-1">
+            <div className="scca-caps mb-3">Historial</div>
+            <div className="border border-[var(--scca-hair)] rounded-md overflow-hidden">
+              <div className="max-h-[460px] overflow-y-auto">
+                {filteredAnalyses.length === 0 ? (
+                  <EmptyState
+                    Icon={BrainCircuit}
+                    title={activeRange ? "Sin análisis en el período" : "Sin análisis registrados"}
+                    body={activeRange
+                      ? "Prueba ampliando el rango de fechas, o limpia el filtro para ver todos."
+                      : "Genera el primero usando el botón inferior. El modelo combinará la última lectura con la imagen ESP32-CAM."}
+                    size="sm"
+                  />
+                ) : filteredAnalyses.map((a, i) => {
+                  const active = a.id === selectedId;
+                  return (
+                    <button key={a.id} onClick={() => setSelectedId(a.id)}
+                      className={`relative w-full text-left p-3 transition-colors ${
+                        active ? "bg-[var(--scca-surface)]" : "bg-[var(--scca-bg)] hover:bg-[var(--scca-surface)]"
+                      } ${i > 0 ? "border-t border-[var(--scca-hair-soft)]" : ""}`}>
+                      {active && <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-[var(--scca-accent)]" aria-hidden />}
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-mono text-[var(--scca-ink-2)] font-medium">#{String(a.id).padStart(3, "0")}</span>
+                        <StatusBadge status={a.estado === "Aviso" ? "warning" : "normal"} />
+                      </div>
+                      <p className="text-[10.5px] font-mono text-[var(--scca-muted)] mb-1.5">{a.fecha}</p>
+                      <p className="text-[11.5px] text-[var(--scca-ink-2)] leading-snug line-clamp-2">{a.resumen}</p>
+                      <div className="flex items-center gap-3 mt-2 text-[10px] text-[var(--scca-faint)] font-mono">
+                        <span className="flex items-center gap-1"><Clock size={9} strokeWidth={1.5} /> {a.tiempo}</span>
+                        <span>IA procesada</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="p-3 border-t border-[var(--scca-hair)]">
+                <button
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !lecturaConImagen}
+                  className="w-full flex items-center justify-center gap-1.5 text-[11.5px] font-medium text-[var(--scca-bg)] bg-[var(--scca-ink)] rounded-sm py-2 hover:bg-[var(--scca-ink-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isGenerating
+                    ? <><Loader2 size={11} strokeWidth={1.5} className="animate-spin" /> Generando…</>
+                    : <><BrainCircuit size={11} strokeWidth={1.5} /> Generar nuevo análisis</>}
                 </button>
-              ))}
+                {!lecturaConImagen && (
+                  <p className="text-[10px] text-[var(--scca-warn)] text-center mt-2">Requiere imagen ESP32-CAM</p>
+                )}
+                <p className="text-[10px] text-[var(--scca-faint)] text-center mt-1">Procesamiento ~40–60 s · Gemini Flash Lite</p>
+              </div>
             </div>
-            <div className="p-3 border-t border-slate-100">
-              <button
-                onClick={handleGenerateAnalysis}
-                disabled={isGenerating || !lecturaConImagen}
-                title={!lecturaConImagen ? "La lectura actual no tiene imagen asociada" : ""}
-                className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-500 to-blue-600 rounded-xl py-2.5 hover:from-violet-600 hover:to-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                {isGenerating
-                  ? <><Loader2 size={13} className="animate-spin" /> Generando...</>
-                  : <><BrainCircuit size={13} /> Generar nuevo análisis</>}
-              </button>
-              {!lecturaConImagen && (
-                <p className="text-xs text-amber-600 text-center mt-2">Requiere imagen de la cámara ESP32</p>
-              )}
-              <p className="text-xs text-slate-400 text-center mt-1">Procesamiento: ~40–60 segundos · Gemini Flash Lite</p>
-            </div>
-          </div>
-        </div>
+          </aside>
 
-        <div className="lg:col-span-2 space-y-4">
-          {!selected ? (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-10 text-center text-sm text-slate-400">
-              No hay análisis para mostrar en el período seleccionado.
-            </div>
-          ) : (
-            <>
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-sm font-semibold text-slate-800">Parámetros del análisis</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Valores registrados al momento del análisis</p>
+          {/* Detail */}
+          <article className="lg:col-span-2">
+            {!selected ? (
+              <div className="border border-[var(--scca-hair)] rounded-md">
+                <EmptyState
+                  Icon={BrainCircuit}
+                  title={activeRange ? "Sin análisis para mostrar" : "Aún no se ha generado ningún análisis"}
+                  body={activeRange
+                    ? "Ningún análisis cae dentro del rango. Limpia el filtro o amplía el período."
+                    : "El sistema generará interpretaciones cualitativas combinando los sensores y la imagen del agua. Empieza por crear el primero."}
+                />
+              </div>
+            ) : (
+              <div className="border border-[var(--scca-hair)] rounded-md">
+                <div className="px-5 py-4 border-b border-[var(--scca-hair)] flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="scca-caps text-[var(--scca-accent)] mb-1">Análisis #{String(selected.id).padStart(3, "0")} · {selected.estado}</div>
+                    <h2 className="text-[20px] font-medium text-[var(--scca-ink)] tracking-[-0.01em] leading-snug" style={{ textWrap: "balance" } as React.CSSProperties}>
+                      {selected.resumen}
+                    </h2>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                      <Calendar size={10} /> {selected.fecha}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                      <Clock size={10} /> {selected.tiempo}
-                    </span>
+                  <div className="text-right text-[11px] font-mono text-[var(--scca-muted)] flex-shrink-0">
+                    <div>{selected.fecha}</div>
+                    <div className="text-[var(--scca-faint)] mt-0.5">Latencia {selected.tiempo}</div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {analysisSensorMeta.map((s) => {
+
+                <div className="grid grid-cols-2 sm:grid-cols-4">
+                  {analysisSensorMeta.map((s, i) => {
                     const val = selected[s.key];
                     return (
-                      <div key={s.key} className={`rounded-xl ${s.bg} border ${s.border} p-3 text-center`}>
-                        <div className="flex items-center justify-center mb-2">
-                          <s.icon size={16} className={s.color} />
+                      <div key={s.key} className={`p-4 ${i % 4 !== 0 ? "border-l border-[var(--scca-hair-soft)]" : ""} ${i >= 2 && "border-t sm:border-t-0 border-[var(--scca-hair-soft)]"}`}>
+                        <div className="scca-caps" style={{ fontSize: 10 }}>{s.label}</div>
+                        <div className="mt-1.5 flex items-baseline gap-1">
+                          <span className={`text-[26px] font-mono tabular-nums font-medium ${s.color} tracking-[-0.03em] leading-none`}>{val || "—"}</span>
+                          <span className="text-[11px] text-[var(--scca-muted)]">{s.unit}</span>
                         </div>
-                        <p className="text-xs text-slate-500 mb-0.5">{s.label}</p>
-                        <p className={`text-2xl font-bold ${s.color} font-mono`}>
-                          {val || "—"}<span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span>
-                        </p>
                       </div>
                     );
                   })}
                 </div>
-              </div>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                <div className="flex items-center gap-2.5 mb-4">
-                  <div className="w-9 h-9 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center">
-                    <BrainCircuit size={16} className="text-violet-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-semibold text-slate-800">Análisis generado por IA</h2>
-                    <p className="text-xs text-slate-400">Interpretación en lenguaje natural · Gemini Flash Lite</p>
-                  </div>
-                  <span className="ml-auto"><StatusBadge status={selected.estado === "Normal" ? "normal" : "warning"} /></span>
+                <div className="px-5 py-5 border-t border-[var(--scca-hair)]">
+                  <div className="scca-caps mb-2">Interpretación del modelo</div>
+                  {isGenerating ? <SkeletonText lines={4} /> : (
+                    <p className="scca-prose">{selected.texto}</p>
+                  )}
                 </div>
-                <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl p-4 border border-slate-100">
-                  <div className="flex items-start gap-2.5">
-                    <MessageSquare size={15} className="text-violet-400 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{selected.texto}</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3.5">
-                  <Info size={15} className="text-blue-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-blue-800 mb-0.5">Recomendación</p>
-                    <p className="text-xs text-blue-700 leading-relaxed">{selected.recomendacion}</p>
-                  </div>
-                </div>
-                {selected.alerta && (
-                  <div className="mt-3 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
-                    <AlertTriangle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-semibold text-amber-800 mb-0.5">Parámetro fuera de rango óptimo</p>
-                      <p className="text-xs text-amber-700">
-                        <strong>{selected.alerta.param}:</strong> {selected.alerta.valor} — Límite: {selected.alerta.limite}
-                      </p>
+
+                <div className="px-5 pb-5">
+                  <div className="bg-[var(--scca-accent-soft)] border-l-2 border-[var(--scca-accent)] rounded-sm p-3.5">
+                    <div className="scca-caps text-[var(--scca-accent)] mb-1 flex items-center gap-1.5">
+                      <Info size={11} strokeWidth={1.5} /> Recomendación
                     </div>
+                    <p className="text-[13px] text-[var(--scca-ink-2)] leading-relaxed">{selected.recomendacion}</p>
                   </div>
-                )}
-                <div className="flex items-center gap-1.5 mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
-                  <CheckCircle2 size={11} className="text-emerald-500" />
-                  Generado en {selected.tiempo}
+
+                  {selected.alerta && (
+                    <div className="mt-3 bg-[var(--scca-warn-bg)] border border-[var(--scca-hair)] rounded-sm p-3.5 flex items-start gap-3">
+                      <AlertTriangle size={13} strokeWidth={1.5} className="text-[var(--scca-warn)] flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[12px] font-semibold text-[var(--scca-warn)]">Parámetro fuera de rango óptimo</p>
+                        <p className="text-[12px] text-[var(--scca-warn)] mt-0.5 opacity-85">
+                          <strong>{selected.alerta.param}:</strong> {selected.alerta.valor} — límite {selected.alerta.limite}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 pt-4 border-t border-[var(--scca-hair-soft)] flex items-center justify-between text-[10.5px] text-[var(--scca-muted)] font-mono">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 size={11} strokeWidth={1.5} className="text-[var(--scca-ok)]" />
+                      Generado en {selected.tiempo} con gemini-flash-lite
+                    </span>
+                    {analyses.length >= 2 && (
+                      <button
+                        onClick={() => setCompareOpen(true)}
+                        className="flex items-center gap-1 text-[var(--scca-accent)] hover:underline font-sans"
+                      >
+                        <Columns size={10} strokeWidth={1.5} /> Comparar con otro
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </>
-          )}
+            )}
+          </article>
         </div>
       </div>
     </div>

@@ -4,9 +4,11 @@ import type { ValueType, NameType } from "recharts/types/component/DefaultToolti
 export function CustomTooltip({ active, payload, label, unit }: TooltipProps<ValueType, NameType> & { unit?: string }) {
   if (active && payload?.length) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2">
-        <p className="text-xs font-semibold text-slate-500 mb-1">{label}</p>
-        <p className="text-sm font-bold" style={{ color: payload[0].color }}>{payload[0].value} {unit}</p>
+      <div className="bg-[var(--scca-bg)] border border-[var(--scca-hair)] rounded-sm px-3 py-2">
+        <p className="text-[10px] font-mono text-[var(--scca-muted)]">{label}</p>
+        <p className="text-[13px] font-mono font-medium mt-0.5" style={{ color: payload[0].color }}>
+          {payload[0].value} {unit}
+        </p>
       </div>
     );
   }

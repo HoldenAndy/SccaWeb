@@ -19,12 +19,17 @@ export function formatFechaConSegundos(fecha: string | number[]): string {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+// Local-date variants. The original isoToday() / isoNDaysAgo() used
+// toISOString() which is UTC — en CDMX (UTC-6) eso devuelve el día siguiente
+// después de las 6 PM. Aquí construimos la cadena YYYY-MM-DD desde la fecha
+// local del usuario para que el filtro siempre arranque en el día visible.
 export function isoToday(): string {
-  return new Date().toISOString().split("T")[0];
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function isoNDaysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n + 1);
-  return d.toISOString().split("T")[0];
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

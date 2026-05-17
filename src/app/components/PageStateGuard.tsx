@@ -14,78 +14,59 @@ export function PageStateGuard({ loadingInit, errorInit, loadingText = "Cargando
   if (loadingInit) {
     return (
       <div className="flex flex-col items-center justify-center min-h-64 gap-3">
-        <Loader2 size={28} className="text-cyan-500 animate-spin" />
-        <p className="text-sm text-slate-500">{loadingText}</p>
+        <Loader2 size={20} strokeWidth={1.5} className="text-[var(--scca-muted)] animate-spin" />
+        <p className="text-sm text-[var(--scca-muted)]">{loadingText}</p>
       </div>
     );
   }
 
   if (!errorInit) return null;
-
   const { code } = parseError(errorInit);
 
-  if (code === "NO_NODES" && isCliente) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-64 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-          <Cpu size={28} className="text-blue-400" />
-        </div>
-        <div className="text-center max-w-sm">
-          <p className="text-base font-semibold text-slate-700 mb-1">Sin dispositivos asignados</p>
-          <p className="text-sm text-slate-400 leading-relaxed">
-            Aún no tienes ningún nodo ESP32 asociado a tu cuenta. Contacta al administrador del sistema para que registre tu dispositivo.
-          </p>
-        </div>
+  const tile = (icon: React.ReactNode, title: string, body: React.ReactNode, extra?: React.ReactNode) => (
+    <div className="flex flex-col items-center justify-center min-h-64 gap-4 px-6">
+      <div className="w-14 h-14 rounded border border-[var(--scca-hair)] flex items-center justify-center bg-[var(--scca-surface)]">
+        {icon}
       </div>
+      <div className="text-center max-w-sm">
+        <p className="text-[15px] font-medium text-[var(--scca-ink)]">{title}</p>
+        <p className="text-[13px] text-[var(--scca-muted)] mt-1.5 leading-relaxed">{body}</p>
+      </div>
+      {extra}
+    </div>
+  );
+
+  if (code === "NO_NODES" && isCliente) {
+    return tile(
+      <Cpu size={22} strokeWidth={1.5} className="text-[var(--scca-accent)]" />,
+      "Sin dispositivos asignados",
+      "Aún no tienes ningún nodo ESP32 asociado a tu cuenta. Contacta al administrador del sistema."
     );
   }
 
   if (code === "NO_NODES") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-64 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center">
-          <Cpu size={28} className="text-amber-400" />
-        </div>
-        <div className="text-center max-w-sm">
-          <p className="text-base font-semibold text-slate-700 mb-1">No hay nodos registrados</p>
-          <p className="text-sm text-slate-400 leading-relaxed">
-            No se encontraron nodos ESP32 en el sistema. Ve a la sección de administración para registrar el primer dispositivo.
-          </p>
-        </div>
-      </div>
+    return tile(
+      <Cpu size={22} strokeWidth={1.5} className="text-[var(--scca-warn)]" />,
+      "No hay nodos registrados",
+      "No se encontraron nodos ESP32 en el sistema. Registra el primer dispositivo desde el módulo de Nodos."
     );
   }
 
   if (code === "NO_CONNECTION") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-64 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center">
-          <WifiOff size={28} className="text-red-400" />
-        </div>
-        <div className="text-center max-w-sm">
-          <p className="text-base font-semibold text-slate-700 mb-1">Sin conexión al servidor</p>
-          <p className="text-sm text-slate-400 leading-relaxed">
-            No se pudo conectar con el backend. Verifica que el servidor esté corriendo en{" "}
-            <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">http://localhost:8080</code>.
-          </p>
-        </div>
-      </div>
+    return tile(
+      <WifiOff size={22} strokeWidth={1.5} className="text-[var(--scca-danger)]" />,
+      "Sin conexión al servidor",
+      <>No se pudo conectar con el backend. Verifica que el servidor esté corriendo en <code className="font-mono text-[11px] bg-[var(--scca-surface)] px-1 py-0.5 rounded-sm">http://localhost:8080</code>.</>
     );
   }
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-64 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center">
-        <ServerOff size={28} className="text-red-400" />
-      </div>
-      <div className="text-center max-w-sm">
-        <p className="text-base font-semibold text-slate-700 mb-1">Error del servidor</p>
-        <p className="text-sm text-slate-400 leading-relaxed">{errorInit}</p>
-      </div>
-      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
-        <AlertTriangle size={13} className="text-amber-500" />
-        <p className="text-xs text-amber-700">Verifica que el backend esté activo en <code>localhost:8080</code></p>
-      </div>
+  return tile(
+    <ServerOff size={22} strokeWidth={1.5} className="text-[var(--scca-danger)]" />,
+    "Error del servidor",
+    errorInit,
+    <div className="flex items-center gap-2 text-[11px] text-[var(--scca-warn)] bg-[var(--scca-warn-bg)] border border-[var(--scca-hair)] rounded px-3 py-1.5">
+      <AlertTriangle size={12} strokeWidth={1.5} />
+      <span>Verifica que el backend esté activo en <code className="font-mono">localhost:8080</code></span>
     </div>
   );
 }

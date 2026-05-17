@@ -17,14 +17,12 @@ interface MiniChartProps {
   loading: boolean;
 }
 
-const MiniTooltip = ({
-  active, payload, label, unit,
-}: TooltipProps<ValueType, NameType> & { unit?: string }) => {
+const MiniTooltip = ({ active, payload, label, unit }: TooltipProps<ValueType, NameType> & { unit?: string }) => {
   if (active && payload?.length) {
     return (
-      <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-2.5 py-1.5">
-        <p className="text-xs text-slate-400">{label}</p>
-        <p className="text-xs font-bold" style={{ color: payload[0].color }}>
+      <div className="bg-[var(--scca-bg)] border border-[var(--scca-hair)] rounded-sm px-2.5 py-1.5">
+        <p className="text-[10px] text-[var(--scca-muted)] font-mono">{label}</p>
+        <p className="text-[12px] font-medium font-mono" style={{ color: payload[0].color }}>
           {payload[0].value} {unit}
         </p>
       </div>
@@ -35,39 +33,28 @@ const MiniTooltip = ({
 
 export const MiniChart = memo(function MiniChart({ label, unit, color, domain, refLine, dataKey, data, currentValue, loading }: MiniChartProps) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-800">{label}</p>
-          <p className="text-xs text-slate-400">Últimas 2 horas</p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }}></span>
-          <span className="text-xs font-semibold" style={{ color, fontFamily: "'JetBrains Mono', monospace" }}>
-            {currentValue} {unit}
-          </span>
-        </div>
+    <div className="border border-[var(--scca-hair)] rounded-md p-4">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[12px] font-medium text-[var(--scca-ink-2)]">{label}</p>
+        <span className="text-[12px] font-mono tabular-nums font-medium" style={{ color }}>
+          {currentValue}{unit && <span className="text-[10px] text-[var(--scca-muted)] ml-0.5 font-normal">{unit}</span>}
+        </span>
       </div>
-      <div className="h-32">
+      <p className="text-[10px] text-[var(--scca-faint)] mb-3">Últimas 2 horas</p>
+      <div className="h-28">
         {data.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-xs text-slate-400">
+          <div className="h-full flex items-center justify-center text-[11px] text-[var(--scca-muted)]">
             {loading ? "Cargando..." : "Sin datos en las últimas 2 h"}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <defs>
-                <linearGradient id={`grad-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={color} stopOpacity={0.18} />
-                  <stop offset="95%" stopColor={color} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="time" tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} interval={Math.floor(data.length / 4)} />
-              <YAxis tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} domain={domain} />
+              <CartesianGrid strokeDasharray="2 4" stroke="var(--scca-hair-soft)" vertical={false} />
+              <XAxis dataKey="time" tick={{ fontSize: 9, fill: "var(--scca-muted)", fontFamily: "Geist Mono" }} axisLine={false} tickLine={false} interval={Math.floor(data.length / 4)} />
+              <YAxis tick={{ fontSize: 9, fill: "var(--scca-muted)", fontFamily: "Geist Mono" }} axisLine={false} tickLine={false} domain={domain} />
               <Tooltip content={<MiniTooltip unit={unit} />} />
-              {refLine && <ReferenceLine y={refLine} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1.5} />}
-              <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} fill={`url(#grad-${dataKey})`} dot={false} activeDot={{ r: 3, fill: color, strokeWidth: 0 }} />
+              {refLine && <ReferenceLine y={refLine} stroke="var(--scca-warn)" strokeDasharray="2 3" strokeWidth={1} />}
+              <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5} fill="none" dot={false} activeDot={{ r: 3, fill: color, strokeWidth: 0 }} />
             </AreaChart>
           </ResponsiveContainer>
         )}

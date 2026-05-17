@@ -1,18 +1,10 @@
-import { NavLink, useNavigate } from "react-router";
-import {
-  Droplets,
-  Wifi,
-  WifiOff,
-  Menu,
-  X,
-  Clock,
-  Activity,
-  LogOut,
-  ChevronDown,
-} from "lucide-react";
+import { useNavigate } from "react-router";
+import { Wifi, WifiOff, Menu, X, LogOut, ChevronDown, Search, Settings } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnalysis } from "../../contexts/AnalysisContext";
+import { NotificationsBell } from "../shared/NotificationsBell";
+import { ThemeToggle } from "../shared/ThemeToggle";
 
 interface Props {
   onToggleSidebar: () => void;
@@ -24,7 +16,7 @@ export function Header({ onToggleSidebar, sidebarOpen }: Props) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const { user, logout } = useAuth();
-  const { nodos, idNodoActivo } = useAnalysis();
+  const { nodos, idNodoActivo, ultimaLectura } = useAnalysis();
   const navigate = useNavigate();
 
   const nodoActual = nodos.find((n) => n.idNodo === idNodoActivo);
@@ -50,82 +42,116 @@ export function Header({ onToggleSidebar, sidebarOpen }: Props) {
     navigate("/login", { replace: true });
   };
 
+  // Última actualización: derived from ultimaLectura.fechaHora (B10).
+  let lastUpdateSec: number | null = null;
+  if (ultimaLectura?.fechaHora) {
+    try {
+      const d = typeof ultimaLectura.fechaHora === "string"
+        ? new Date(ultimaLectura.fechaHora)
+        : new Date(ultimaLectura.fechaHora[0], ultimaLectura.fechaHora[1] - 1, ultimaLectura.fechaHora[2], ultimaLectura.fechaHora[3], ultimaLectura.fechaHora[4], ultimaLectura.fechaHora[5]);
+      lastUpdateSec = Math.floor((time.getTime() - d.getTime()) / 1000);
+    } catch { /* ignore */ }
+  }
+  const lastUpdateLabel =
+    lastUpdateSec === null ? "—"
+    : lastUpdateSec < 60 ? `hace ${lastUpdateSec}s`
+    : lastUpdateSec < 3600 ? `hace ${Math.floor(lastUpdateSec / 60)} min`
+    : `hace ${Math.floor(lastUpdateSec / 3600)} h`;
+
   const timeStr = time.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const dateStr = time.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+
+  // Cmd/Ctrl detection for label
+  const isMac = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
 
   return (
-    <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-50 shadow-sm">
-      <div className="flex items-center gap-3">
-        <button className="md:hidden p-1.5 rounded-lg hover:bg-slate-100 transition-colors" onClick={onToggleSidebar}>
-          {sidebarOpen ? <X size={18} className="text-slate-600" /> : <Menu size={18} className="text-slate-600" />}
+    <header className="h-14 bg-[var(--scca-bg)] border-b border-[var(--scca-hair)] px-3 md:px-6 flex items-center justify-between sticky top-0 z-30">
+      <div className="flex items-center gap-3 min-w-0">
+        <button
+          className="md:hidden p-1.5 rounded hover:bg-[var(--scca-surface)] transition-colors"
+          onClick={onToggleSidebar}
+        >
+          {sidebarOpen ? <X size={16} strokeWidth={1.5} /> : <Menu size={16} strokeWidth={1.5} />}
         </button>
-        <NavLink to="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-sm">
-            <Droplets size={16} className="text-white" />
-          </div>
-          <div className="hidden sm:block">
-            <p className="text-sm font-semibold text-slate-800 leading-none">AquaMonitor</p>
-            <p className="text-xs text-slate-400 leading-none mt-0.5">Sistema Inteligente de Agua</p>
-          </div>
-        </NavLink>
-      </div>
 
-      <div className={`hidden md:flex items-center gap-2 rounded-full px-3 py-1.5 border ${
-        esp32Conectado ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
-      }`}>
-        {esp32Conectado ? (
-          <>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        {/* ESP32 status (sin la mención "backend") */}
+        <div className="hidden md:flex items-center gap-2 text-[11px] min-w-0">
+          <span className={`flex items-center gap-1.5 ${esp32Conectado ? "text-[var(--scca-ok)]" : "text-[var(--scca-muted)]"}`}>
+            {esp32Conectado ? <Wifi size={12} strokeWidth={1.5} /> : <WifiOff size={12} strokeWidth={1.5} />}
+            <span className="font-medium truncate max-w-[280px]">
+              {esp32Conectado
+                ? `ESP32 en línea${nodoActual ? ` · ${nodoActual.ubicacion}` : ""}`
+                : nodos.length === 0 ? "Sin nodos" : "ESP32 desconectado"}
             </span>
-            <Wifi size={12} className="text-emerald-600" />
-            <span className="text-xs font-medium text-emerald-700">
-              ESP32 Conectado{nodoActual ? ` · ${nodoActual.ubicacion}` : ""}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="relative flex h-2 w-2">
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
-            </span>
-            <WifiOff size={12} className="text-slate-400" />
-            <span className="text-xs font-medium text-slate-500">
-              {nodos.length === 0 ? "Sin nodos" : "ESP32 Desconectado"}
-            </span>
-          </>
-        )}
-      </div>
-
-      <div className="flex items-center gap-3">
-        <div className="hidden sm:flex flex-col items-end">
-          <div className="flex items-center gap-1.5">
-            <Clock size={11} className="text-slate-400" />
-            <span className="text-xs font-medium text-slate-600" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{timeStr}</span>
-          </div>
-          <span className="text-xs text-slate-400">{dateStr}</span>
+          </span>
+          {lastUpdateSec !== null && (
+            <>
+              <span className="text-[var(--scca-faint)]">·</span>
+              <span className="flex items-center gap-1 text-[var(--scca-muted)]">
+                <span className={`w-1 h-1 rounded-full ${lastUpdateSec < 60 ? "bg-[var(--scca-ok)] animate-pulse" : "bg-[var(--scca-faint)]"}`} />
+                actualizado <span className="font-mono">{lastUpdateLabel}</span>
+              </span>
+            </>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 bg-cyan-50 border border-cyan-200 rounded-lg px-2.5 py-1">
-          <Activity size={11} className="text-cyan-600" />
-          <span className="text-xs font-medium text-cyan-700">En línea</span>
+      </div>
+
+      <div className="flex items-center gap-2 md:gap-3">
+        {/* Quick "Cmd+K" trigger */}
+        <button
+          onClick={() => {
+            const ev = new KeyboardEvent("keydown", { key: "k", metaKey: isMac, ctrlKey: !isMac, bubbles: true });
+            document.dispatchEvent(ev);
+          }}
+          className="hidden sm:flex items-center gap-2 text-[11px] text-[var(--scca-muted)] border border-[var(--scca-hair)] rounded-sm px-2 py-1 hover:bg-[var(--scca-surface)] transition-colors"
+          title="Buscar / acciones"
+        >
+          <Search size={12} strokeWidth={1.5} />
+          <span className="hidden md:inline">Buscar</span>
+          <kbd className="font-mono text-[9.5px] border border-[var(--scca-hair)] rounded-sm px-1 py-0.5 ml-1">
+            {isMac ? "⌘K" : "Ctrl+K"}
+          </kbd>
+        </button>
+
+        <ThemeToggle compact />
+
+        <NotificationsBell />
+
+        <div className="hidden sm:flex flex-col items-end">
+          <span className="text-[12px] text-[var(--scca-ink)] font-mono tabular-nums">{timeStr}</span>
+          <span className="text-[10px] text-[var(--scca-muted)]">{time.toLocaleDateString("es-MX", { day: "2-digit", month: "short" })}</span>
         </div>
 
         <div className="relative" data-user-menu>
-          <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-1.5 transition-colors">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
-              <span className="text-xs font-bold text-white">{user?.nombre?.charAt(0).toUpperCase() ?? "U"}</span>
+          <button
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--scca-surface)] transition-colors"
+          >
+            <div className="w-6 h-6 rounded-[3px] bg-[var(--scca-ink)] text-[var(--scca-bg)] flex items-center justify-center text-[10px] font-semibold">
+              {user?.nombre?.charAt(0).toUpperCase() ?? "U"}
             </div>
-            <span className="hidden sm:block text-xs font-medium text-slate-700 max-w-24 truncate">{user?.nombre ?? "Usuario"}</span>
-            <ChevronDown size={11} className="text-slate-500" />
+            <span className="hidden sm:block text-[12px] text-[var(--scca-ink)] max-w-24 truncate">
+              {user?.nombre ?? "Usuario"}
+            </span>
+            <ChevronDown size={11} strokeWidth={1.5} className="text-[var(--scca-muted)]" />
           </button>
           {userMenuOpen && (
-            <div className="absolute right-0 top-full mt-1.5 w-52 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1.5 overflow-hidden">
-              <div className="px-3 py-2 border-b border-slate-100 mb-1">
-                <p className="text-xs font-semibold text-slate-800 truncate">{user?.nombre}</p>
-                <p className="text-xs text-slate-400 capitalize">{user?.rol?.toLowerCase().replace("_", " ")}</p>
+            <div className="absolute right-0 top-full mt-1 w-56 bg-[var(--scca-bg)] border border-[var(--scca-hair)] rounded shadow-[0_4px_12px_rgba(0,0,0,0.06)] z-50 overflow-hidden scca-fade-in">
+              <div className="px-3 py-2.5 border-b border-[var(--scca-hair)]">
+                <p className="text-[12px] font-medium text-[var(--scca-ink)] truncate">{user?.nombre}</p>
+                <p className="scca-caps mt-0.5" style={{ fontSize: 9.5 }}>{user?.rol?.replace("_", " ")}</p>
               </div>
-              <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors">
-                <LogOut size={13} />
+              <button
+                onClick={() => { setUserMenuOpen(false); navigate("/preferencias"); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[var(--scca-ink-2)] hover:bg-[var(--scca-surface)] transition-colors"
+              >
+                <Settings size={12} strokeWidth={1.5} />
+                Preferencias
+              </button>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[var(--scca-danger)] hover:bg-[var(--scca-danger-bg)] transition-colors"
+              >
+                <LogOut size={12} strokeWidth={1.5} />
                 Cerrar sesión
               </button>
             </div>
